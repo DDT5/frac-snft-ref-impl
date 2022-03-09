@@ -1,4 +1,3 @@
-
 Fractionalized Secret NFT ("frac-sNFT") Standard Specifications and Reference Implementation  <!-- omit in toc --> 
 ==============
 ***These are the standard specifications (work in progress) and reference contract (to be built) that implements the base standard required for fractionalized NFTs on Secret Network. The reference contract is designed to be used by developers as-is or to build upon for individual applications.***

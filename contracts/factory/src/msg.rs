@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use cosmwasm_std::{Binary, HumanAddr};
-use secret_toolkit::utils::{HandleCallback};  
+use cosmwasm_std::{Binary, HumanAddr, Uint128};
+use secret_toolkit::utils::{InitCallback, HandleCallback};  
 
 use crate::contract::{BLOCK_SIZE};
 
@@ -43,14 +43,14 @@ pub enum HandleMsg {
         /// optional message to control receiving logic
         msg: Option<Binary>,
     },
-    // Transfers an NFT owned by this contract
+    /// Transfers an NFT owned by this contract
     TransferNft {
         nft_contr_addr: HumanAddr,
         nft_contr_hash: String,
         recipient: HumanAddr,
         token_id: String
     },
-    // `send` an NFT that this contract has permission to transfer
+    /// `send` an NFT that this contract has permission to transfer
     SendNft {
         nft_contr_addr: HumanAddr,
         nft_contr_hash: String,
@@ -58,25 +58,73 @@ pub enum HandleMsg {
         contract: HumanAddr,
         token_id: String,
         msg: Option<Binary>,
-    }
+    },
+    /// Instantiates ftoken contract
+    InstantiateFtoken {
+        name: String,
+        symbol: String,
+        decimals: u8,
+        callback_code_hash: String,
+    },
+    /// Receiver for InitResponse callback from ftoken contract  
+    RegisterFtoken {
+        /// ftoken contract id
+        ftoken_config: FtokenConfig,
+        contract_info: ContractInfo,
+    },
 }
 
-// #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-// #[serde(rename_all = "snake_case")]
-// pub enum HandleAnswer {
-//     Rn {
-//         rn: [u8; 32],
-//     },
-// }
-
-// impl HandleCallback for HandleAnswer {
-//     const BLOCK_SIZE: usize = BLOCK_SIZE;
-// }
-
 
 // ------------------------------------------------------------------------------
-// Enums for callback
+// Enums and structs (init) for callback
 // ------------------------------------------------------------------------------
+
+/// From SNIP20 ref impl, added [derive(Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct InitialBalance {
+    pub address: HumanAddr,
+    pub amount: Uint128,
+}
+
+/// From SNIP20 ref impl, added [derive(PartialEq)]
+/// This type represents optional configuration values which can be overridden.
+/// All values are optional and have defaults which are more private by default,
+/// but can be overridden if necessary
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct InitConfig {
+    /// Indicates whether the total supply is public or should be kept secret.
+    /// default: False
+    public_total_supply: Option<bool>,
+    /// Indicates whether deposit functionality should be enabled
+    /// default: False
+    enable_deposit: Option<bool>,
+    /// Indicates whether redeem functionality should be enabled
+    /// default: False
+    enable_redeem: Option<bool>,
+    /// Indicates whether mint functionality should be enabled
+    /// default: False
+    enable_mint: Option<bool>,
+    /// Indicates whether burn functionality should be enabled
+    /// default: False
+    enable_burn: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct InitFtoken{
+    pub name: String,
+    pub admin: Option<HumanAddr>,
+    pub symbol: String,
+    pub decimals: u8,
+    pub initial_balances: Option<Vec<InitialBalance>>,
+    pub prng_seed: Binary,
+    pub config: Option<InitConfig>,
+}
+
+impl InitCallback for InitFtoken {
+    const BLOCK_SIZE: usize = BLOCK_SIZE;
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]

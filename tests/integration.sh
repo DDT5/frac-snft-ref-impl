@@ -6,7 +6,7 @@
 # ------------------------------------------------------------------------
 set -eu
 set -o pipefail # If anything in a pipeline fails, the pipe's exit status is a failure
-#set -x # Print all commands for debugging
+# set -x # Print all commands for debugging
 
 declare -a KEY=(a b c d)
 
@@ -303,8 +303,41 @@ function log_gas() {
 # create viewing keys
 # ------------------------------------------------------------------------
 
-function create_vk() {
+# Create viewing keys, where there is the "api_key_" prefix
+function create_vk() {   
     contract_addr="$1"
+    declare -A tx_hash=([a]='' [b]='' [c]='' [d]='')
+    declare -A viewing_key_response=([a]='' [b]='' [c]='' [d]='')
+
+    local create_viewing_key_message='{"create_viewing_key":{"entropy":"MyPassword123"}}'
+    for key in "${KEY[@]}"; do
+        log "creating viewing key for \"$key\""
+        tx_hash[$key]="$(compute_execute "$contract_addr" "$create_viewing_key_message" ${FROM[$key]})"
+    done
+    wait_for_tx ${tx_hash[d]} "waiting for create_vk"
+
+    for key in "${KEY[@]}"; do
+        viewing_key_response="$(data_of secretcli q compute tx "${tx_hash[$key]}")"
+        VK[$key]="$(jq -er '.create_viewing_key.key' <<<"$viewing_key_response")"
+        log "viewing key for \"$key\" set to ${VK[$key]}"
+        if [[ "${VK[$key]}" =~ ^api_key_ ]]; then
+            log "viewing key \"$key\" seems valid"
+        else
+            log 'viewing key is invalid'
+            return 1
+        fi
+    done
+
+    # Check that all viewing keys are different despite using the same entropy
+    assert_ne "${VK[a]}" "${VK[b]}"
+    assert_ne "${VK[b]}" "${VK[c]}"
+    assert_ne "${VK[c]}" "${VK[d]}"
+}
+
+# SNIP721's viewing keys do not have the "api_key_" prefix
+function create_vk_s721() {
+    contract_addr="$1"
+    # postfix="$2"
     declare -A tx_hash=([a]='' [b]='' [c]='' [d]='')
     declare -A viewing_key_response=([a]='' [b]='' [c]='' [d]='')
 
@@ -327,14 +360,10 @@ function create_vk() {
     assert_ne "${VK[a]}" "${VK[b]}"
     assert_ne "${VK[b]}" "${VK[c]}"
     assert_ne "${VK[c]}" "${VK[d]}"
-
     
-    # # set viewing key for SNIP721 contract
-    # txh="$(tx_of secretcli tx compute execute $snip721 '{"set_viewing_key":{"key":"foo bar"}}' ${FROM[a]})"
-    # wait_for_tx $txh "waiting to create VK"
-    # VK[a]="$(secretcli q compute tx $txh | jq -r '.output_data_as_string' | sed -e 's/^{"viewing_key":{"key":"//'  -e 's/"}} *$//')"
+    # foo=bar; eval "$foo"="something"; assert_eq $bar "something"
 
-    return 0
+    # echo "${VK[@]}"
 }
 
 # ------------------------------------------------------------------------
@@ -372,9 +401,9 @@ function makePermit() {
         },
         "memo": ""
     }'
-    echo $PERMIT > ~/code/permits/permit${key}.json
-    secretcli tx sign-doc ~/code/permits/permit${key}.json --from $key > ~/code/permits/sig${key}.json
-    # cat ~/code/permits/sig.json
+    echo $PERMIT > ~/code/local/permits/permit${key}.json
+    secretcli tx sign-doc ~/code/local/permits/permit${key}.json --from $key > ~/code/local/permits/sig${key}.json
+    # cat ~/code/local/permits/sig.json
     permit_params='{
         "allowed_tokens": '$(echo $PERMIT | jq -r '.msgs[0].value.allowed_tokens')',
         "permit_name": "'"$(echo $PERMIT | jq -r '.msgs[0].value.permit_name')"'",
@@ -384,7 +413,7 @@ function makePermit() {
 
     permit_q='{
         "params":'$(echo $permit_params)',
-        "signature": '$(cat ~/code/permits/sig${key}.json)'
+        "signature": '$(cat ~/code/local/permits/sig${key}.json)'
     }'
     # remove white space
     permit_q="$(echo $permit_q | sed  's/ *//g')"
@@ -413,18 +442,24 @@ function fundCD() {
 # ########################################################################
 # secretcli query compute list-code
 # secretcli query compute list-contract-by-code 1
-function doInit() {
-    init_msg='{}'
-    fsnft="$(create_contract '.' "contract" "$init_msg")"
-    fsnft_h="$(secretcli q compute contract-hash $fsnft | sed 's/^0x//')"
 
+function doInit() {
+    # instantiate factory contract
+    init_msg='{}'
+    factory="$(create_contract '.' "factory" "$init_msg")"
+    factory_h="$(secretcli q compute contract-hash $factory | sed 's/^0x//')"
+
+    # instantiate SNIP721 contract
     init_msg='{"name":"myNFT","symbol":"NFT","entropy":"foo bar","config":{"public_token_supply":true,"public_owner":true,"enable_sealed_metadata":true,"unwrapped_metadata_is_private":true,"minter_may_update_metadata":true,"owner_may_update_metadata":true,"enable_burn":true}}'
     snip721="$(create_contract './tests/snip721' "snip721contract" "$init_msg")"
     snip721_h="$(secretcli q compute contract-hash $snip721 | sed 's/^0x//')"
 
-    # secretcli query compute list-code
-    # secretcli query compute list-contract-by-code 1
-    
+    # upload ftoken (no instantiation)
+    # prng_seed="$(echo "foo bar" | base64)"
+    # init_msg='{"name":"myftoken","symbol":"FTKN","decimals":6,"prng_seed":"'"$prng_seed"'","initial_balances":[{"address":"'"${ADDRESS[a]}"'","amount":"1000000"}]}'
+    code_id="$(upload_code '.' "ftoken")"
+    # ftoken=
+    ftoken_h="$(secretcli query compute list-code | jq -r '.[] | select(.id=='$code_id') | .data_hash ')"
 }
 
 # ########################################################################
@@ -441,22 +476,18 @@ function doHandles() {
     # reveal
     handle_w $snip721 '{"reveal":{"token_id":"0"}}' a
     
-    # # change public and private metadata (note need to `reveal` first before private metadata can be changed)
-    # PuMetDat='{"token_uri":"public_uri_all_can_see"}'
-    # PrMetDat='{"token_uri":"here_is_private_uri"}'
-    # handle_w $snip721 '{"set_metadata":{"token_id":"0","public_metadata":'$PuMetDat',"private_metadata":'$PrMetDat'}}' a
+    # change public and private metadata (note need to `reveal` first before private metadata can be changed)
+    PuMetDat='{"token_uri":"public_uri_all_can_see"}'
+    PrMetDat='{"token_uri":"here_is_private_uri"}'
+    handle_w $snip721 '{"set_metadata":{"token_id":"0","public_metadata":'$PuMetDat',"private_metadata":'$PrMetDat'}}' a
 
-    # # `transfer` NFT from ADDRESS[a] to fsnft
-    # handle_w $snip721 '{"transfer_nft":{"recipient":"'"$fsnft"'","token_id":"0"}}' a
-    # # `transfer` NFT from fsnft to ADDRESS[a]
-    # handle_w $fsnft '{"transfer_nft":{"nft_contr_addr":"'"$snip721"'","nft_contr_hash":"'"$snip721_h"'","recipient":"'"${ADDRESS[a]}"'","token_id":"0"}}' a
+    # # straight transfer of NFT from ADDRESS[a] to factory and back
+    # handle_w $snip721 '{"transfer_nft":{"recipient":"'"$factory"'","token_id":"0"}}' a
+    # handle_w $factory '{"transfer_nft":{"nft_contr_addr":"'"$snip721"'","nft_contr_hash":"'"$snip721_h"'","recipient":"'"${ADDRESS[a]}"'","token_id":"0"}}' a
 
-    # register receive with SNIP721 contract
-    handle_w $fsnft '{"register":{"reg_addr":"'"$snip721"'","reg_hash":"'"$snip721_h"'"}}' a
-
-    # set_whitelisted_approval for fsnft contract to transfer (`send`)
+    # set_whitelisted_approval for factory contract to transfer
     msg='{"set_whitelisted_approval":{
-        "address":"'"${fsnft}"'",
+        "address":"'"${factory}"'",
         "token_id":"0",
         "view_owner":"approve_token",
         "view_private_metadata":"approve_token",
@@ -465,18 +496,36 @@ function doHandles() {
     msg="$(echo $msg | sed  's/ *//g')"
     handle_w $snip721 $msg a
 
-    # transfer NFT from ADDRESS[a] to fsnft, called by fsnft contract after getting permission
-    msg="$(echo "heres_some_message_hello" | base64)"
-    #"receiver_info":"'"$fsnft_h"'", <--- optional field for below
-    handle_w $fsnft '{"send_nft":{"nft_contr_addr":"'"$snip721"'","nft_contr_hash":"'"$snip721_h"'","contract":"'"$fsnft"'","token_id":"0","msg":"'"$msg"'"}}' a
-    # echo $resp | jq '.output_logs[0].attributes[] | select(.key=="msg") | .value' | base64 -d
 
+    # register receive with SNIP721 contract to enable `send`
+    handle_w $factory '{"register":{"reg_addr":"'"$snip721"'","reg_hash":"'"$snip721_h"'"}}' a
+
+    # # transfer NFT from ADDRESS[a] to factory, called by factory contract after getting permission
+    # msg="$(echo "heres_some_message_hello" | base64)"
+    # handle_w $factory '{"send_nft":{"nft_contr_addr":"'"$snip721"'","nft_contr_hash":"'"$snip721_h"'","contract":"'"$ftoken"'","token_id":"0","msg":"'"$msg"'"}}' a
+    # # echo $resp | jq '.output_logs[0].attributes[] | select(.key=="msg") | .value' | base64 -d
+
+    msg='{"instantiate_ftoken":{
+        "name":"ftokencoin",
+        "symbol":"FTKN",
+        "decimals":6,
+        "callback_code_hash":"'"$ftoken_h"'"
+        }
+    }'
+    msg="$(echo $msg | sed  's/ *//g')"
+    handle_w $factory $msg a
+    ftoken0="$(secretcli query compute list-contract-by-code 3 | jq -r '.[0].address')"
+}
+
+function ftokenHandles() {
+    handle_w $ftoken0 '{"mint":{"recipient":"'"${ADDRESS[a]}"'","amount":"1000000"}}'
 }
 
 # ------------------------------------------------------------------------
 # queries
 # ------------------------------------------------------------------------
 function doQueries() {
+    # SNIP721 queries
     compute_query $snip721 '{"contract_info":{}}'
     compute_query $snip721 '{"contract_config":{}}'
     compute_query $snip721 '{"minters":{}}'
@@ -485,14 +534,22 @@ function doQueries() {
     compute_query $snip721 '{"owner_of":{"token_id":"0"}}'
     compute_query $snip721 '{"nft_info":{"token_id":"0"}}'
     compute_query $snip721 '{"all_nft_info":{"token_id":"0"}}'
-    compute_query $snip721 '{"private_metadata":{"token_id":"0","viewer":{"address":"'"${ADDRESS[a]}"'","viewing_key":"'"${VK[a]}"'"} }}' 
+    compute_query $snip721 '{"private_metadata":{"token_id":"0","viewer":{"address":"'"${ADDRESS[a]}"'","viewing_key":"'"${VK_nft[a]}"'"} }}' 
     compute_query $snip721 '{"nft_dossier":{"token_id":"0"}}' | jq
     compute_query $snip721 '{"batch_nft_dossier":{"token_ids":["0"]}}'
-    compute_query $snip721 '{"token_approvals":{"token_id":"0","viewing_key":"'"${VK[a]}"'"}}' | jq
-    compute_query $snip721 '{"inventory_approvals":{"address":"'"${ADDRESS[a]}"'","viewing_key":"'"${VK[a]}"'"}}' | jq
+    compute_query $snip721 '{"token_approvals":{"token_id":"0","viewing_key":"'"${VK_nft[a]}"'"}}' | jq
+    compute_query $snip721 '{"inventory_approvals":{"address":"'"${ADDRESS[a]}"'","viewing_key":"'"${VK_nft[a]}"'"}}' | jq
     
     # compute_query $snip721 '{"with_permit":{"permit":'$(echo $permit_q)',"query":{"nft_dossier":{"token_id":"0"}}}}' 
     compute_query $snip721 '{"with_permit":{"permit":'$permit_q',"query":{"nft_dossier":{"token_id":"0"}}}}' 
+    
+    # ftoken (SNIP20) queries
+    compute_query $ftoken0 '{"token_info":{}}'
+    compute_query $ftoken0 '{"token_config":{}}'
+    compute_query $ftoken0 '{"contract_status":{}}'
+    compute_query $ftoken0 '{"exchange_rate":{}}'
+    compute_query $ftoken0 '{"minters":{}}'
+    compute_query $ftoken0 '{"balance":{"address":"'"${ADDRESS[a]}"'","key":"'"${VK_token[a]}"'"}}'
     
 }
 
@@ -502,9 +559,10 @@ function doQueries() {
 function main() {
     fundCD
     doInit
-    # create_vk $snip721
+    create_vk_s721 $snip721; declare -g -A VK_nft=([a]="${VK[a]}" [b]="${VK[b]}" [c]="${VK[c]}" [d]="${VK[d]}")
     # makePermit $snip721 ${KEY[0]}
-    # doHandles
+    doHandles
+    # create_vk $ftoken0; declare -g -A VK_token=([a]="${VK[a]}" [b]="${VK[b]}" [c]="${VK[c]}" [d]="${VK[d]}")
     # doQueries
 
     # print gas_log and success msg

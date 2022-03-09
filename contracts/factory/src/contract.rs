@@ -1,15 +1,22 @@
 use cosmwasm_std::{
     debug_print, to_binary, Api, Binary, Env, Extern, HandleResponse, InitResponse, Querier, from_binary,
-    CosmosMsg, WasmMsg, log, 
+    CosmosMsg, WasmMsg, log, Uint128,
     StdResult, Storage, HumanAddr, // StdError, 
 };
-use secret_toolkit::utils::{HandleCallback}; //pad_handle_result, pad_query_result,   
+use secret_toolkit::utils::{HandleCallback, InitCallback}; //pad_handle_result, pad_query_result,   
 // use secret_toolkit::serialization::{Bincode2, Serde};
 
-use crate::msg::{InitMsg, HandleMsg, InterContrMsg, QueryMsg, CountResponse};
+use crate::msg::{
+    InitMsg, HandleMsg, InitFtoken, InterContrMsg, QueryMsg, CountResponse,
+    InitialBalance,
+};
+
+use fsnft_utils::{FtokenConfig, ContractInfo,};
+
 use crate::state::{RegContr, config, config_read};
 
 pub const BLOCK_SIZE: usize = 256;
+
 
 /////////////////////////////////////////////////////////////////////////////////
 // Init function
@@ -91,6 +98,28 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             token_id,
             msg,
         ),
+        HandleMsg::InstantiateFtoken {
+            name,
+            symbol,
+            decimals,
+            callback_code_hash
+        } => try_instantiate_ftoken_contr(
+            deps,
+            env,
+            name,
+            symbol,
+            decimals,
+            callback_code_hash,
+        ),
+        HandleMsg::RegisterFtoken {
+            ftoken_config,
+            contract_info,
+        } => try_register_ftoken(
+            deps,
+            env,
+            ftoken_config,
+            contract_info,
+        )
     }
 }
 
@@ -160,12 +189,12 @@ pub fn try_transfer_nft<S: Storage, A: Api, Q: Querier>(
     token_id: String,
 ) -> StdResult<HandleResponse> {
         // Send message (callback) to NFT contract
-        let receive_rn_msg = InterContrMsg::TransferNft {
+        let contract_msg = InterContrMsg::TransferNft {
             recipient: recipient, 
             token_id: token_id,
         };
     
-        let cosmos_msg = receive_rn_msg.to_cosmos_msg(
+        let cosmos_msg = contract_msg.to_cosmos_msg(
             nft_contr_hash.to_string(), 
             HumanAddr(nft_contr_addr.to_string()), 
             None
@@ -195,20 +224,20 @@ pub fn try_send_nft<S: Storage, A: Api, Q: Querier>(
     _msg: Option<Binary>,
 ) -> StdResult<HandleResponse> {
     // Send message (callback) to NFT contract
-    // let receive_rn_msg = InterContrMsg::SendNft {
+    // let contract_msg = InterContrMsg::SendNft {
     //     contract: contract, 
     //     token_id: token_id,
     //     msg: msg,
     // };
 
     let msg = Some(to_binary("data from contract here")?);
-    let receive_rn_msg = InterContrMsg::SendNft {
+    let contract_msg = InterContrMsg::SendNft {
             contract: contract, 
             token_id: token_id,
             msg: msg,
         };
 
-    let cosmos_msg = receive_rn_msg.to_cosmos_msg(
+    let cosmos_msg = contract_msg.to_cosmos_msg(
         nft_contr_hash.to_string(), 
         HumanAddr(nft_contr_addr.to_string()), 
         None
@@ -224,6 +253,64 @@ pub fn try_send_nft<S: Storage, A: Api, Q: Querier>(
     })
 }
 
+pub fn try_instantiate_ftoken_contr<S: Storage, A: Api, Q: Querier>(
+    _deps: &mut Extern<S, A, Q>,
+    env: Env,
+    name: String,
+    symbol: String,
+    decimals: u8,
+    callback_code_hash: String,
+) -> StdResult<HandleResponse> {
+
+    let init_balance = vec![InitialBalance {
+        address: env.message.sender,  
+        amount: Uint128(1_000_000),
+    }];
+    let prng_seed = to_binary("prngseed")?;
+    
+    let contract_msg = InitFtoken {
+        name,
+        admin: None,
+        symbol,
+        decimals,
+        initial_balances: Some(init_balance),
+        prng_seed,
+        config: None,
+    };
+    
+    let cosmos_msg = contract_msg.to_cosmos_msg(
+        "ftoken_contract".to_string(), 
+        3u64, 
+        callback_code_hash,
+        None,
+    )?;
+    
+    // create messages
+    let messages = vec![cosmos_msg];
+    
+    Ok(HandleResponse {
+        messages: messages,
+        log: vec![],
+        data: None
+    })
+}
+
+pub fn try_register_ftoken<S: Storage, A: Api, Q: Querier>(
+    _deps: &mut Extern<S, A, Q>,
+    _env: Env,
+    _ftoken_config: FtokenConfig,
+    _contract_info: ContractInfo,
+) -> StdResult<HandleResponse> {
+    // authenticate this is message is coming from the expected ftoken contract
+    
+    // save
+    Ok(HandleResponse::default())
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+// Query functions 
+/////////////////////////////////////////////////////////////////////////////////
+
 pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     msg: QueryMsg,
@@ -232,10 +319,6 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         QueryMsg::GetCount {} => to_binary(&query_count(deps)?),
     }
 }
-
-/////////////////////////////////////////////////////////////////////////////////
-// Query functions 
-/////////////////////////////////////////////////////////////////////////////////
 
 fn query_count<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<CountResponse> {
     let state = config_read(&deps.storage).load()?;

@@ -7,8 +7,15 @@
   ],
   "properties": {
     "count": {
-      "type": "integer",
-      "format": "int32"
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/HumanAddr"
+      }
+    }
+  },
+  "definitions": {
+    "HumanAddr": {
+      "type": "string"
     }
   }
 }

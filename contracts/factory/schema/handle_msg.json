@@ -1,0 +1,290 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HandleMsg",
+  "anyOf": [
+    {
+      "description": "Function for users to call. When called, fsnft contract will register with SNIP721 contract",
+      "type": "object",
+      "required": [
+        "register"
+      ],
+      "properties": {
+        "register": {
+          "type": "object",
+          "required": [
+            "reg_addr",
+            "reg_hash"
+          ],
+          "properties": {
+            "reg_addr": {
+              "description": "The SNIP721 contract address to registered with",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/HumanAddr"
+                }
+              ]
+            },
+            "reg_hash": {
+              "description": "The SNIP721 contract code hash",
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Receiver interface function for SNIP721 contract. Msg to be received from SNIP721 contract BatchReceiveNft may be a HandleMsg variant of any contract that wants to implement a receiver interface.  BatchReceiveNft, which is more informative and more efficient, is preferred over ReceiveNft.",
+      "type": "object",
+      "required": [
+        "batch_receive_nft"
+      ],
+      "properties": {
+        "batch_receive_nft": {
+          "type": "object",
+          "required": [
+            "from",
+            "sender",
+            "token_ids"
+          ],
+          "properties": {
+            "from": {
+              "description": "previous owner of sent tokens.  This is equivalent to the ReceiveNft `sender` field",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/HumanAddr"
+                }
+              ]
+            },
+            "msg": {
+              "description": "optional message to control receiving logic",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Binary"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sender": {
+              "description": "address that sent the tokens.  There is no ReceiveNft field equivalent to this",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/HumanAddr"
+                }
+              ]
+            },
+            "token_ids": {
+              "description": "tokens that were sent",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Transfers an NFT owned by this contract",
+      "type": "object",
+      "required": [
+        "transfer_nft"
+      ],
+      "properties": {
+        "transfer_nft": {
+          "type": "object",
+          "required": [
+            "nft_contr_addr",
+            "nft_contr_hash",
+            "recipient",
+            "token_id"
+          ],
+          "properties": {
+            "nft_contr_addr": {
+              "$ref": "#/definitions/HumanAddr"
+            },
+            "nft_contr_hash": {
+              "type": "string"
+            },
+            "recipient": {
+              "$ref": "#/definitions/HumanAddr"
+            },
+            "token_id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "`send` an NFT that this contract has permission to transfer",
+      "type": "object",
+      "required": [
+        "send_nft"
+      ],
+      "properties": {
+        "send_nft": {
+          "type": "object",
+          "required": [
+            "contract",
+            "nft_contr_addr",
+            "nft_contr_hash",
+            "token_id"
+          ],
+          "properties": {
+            "contract": {
+              "description": "address to send the token to",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/HumanAddr"
+                }
+              ]
+            },
+            "msg": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Binary"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "nft_contr_addr": {
+              "$ref": "#/definitions/HumanAddr"
+            },
+            "nft_contr_hash": {
+              "type": "string"
+            },
+            "token_id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Instantiates ftoken contract",
+      "type": "object",
+      "required": [
+        "instantiate_ftoken"
+      ],
+      "properties": {
+        "instantiate_ftoken": {
+          "type": "object",
+          "required": [
+            "callback_code_hash",
+            "decimals",
+            "name",
+            "symbol"
+          ],
+          "properties": {
+            "callback_code_hash": {
+              "type": "string"
+            },
+            "decimals": {
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 0.0
+            },
+            "name": {
+              "type": "string"
+            },
+            "symbol": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Receiver for InitResponse callback from ftoken contract",
+      "type": "object",
+      "required": [
+        "register_ftoken"
+      ],
+      "properties": {
+        "register_ftoken": {
+          "type": "object",
+          "required": [
+            "contract_info",
+            "ftoken_config"
+          ],
+          "properties": {
+            "contract_info": {
+              "$ref": "#/definitions/ContractInfo"
+            },
+            "ftoken_config": {
+              "description": "ftoken contract id",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/FtokenConfig"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "Binary": {
+      "description": "Binary is a wrapper around Vec<u8> to add base64 de/serialization with serde. It also adds some helper methods to help encode inline.\n\nThis is only needed as serde-json-{core,wasm} has a horrible encoding for Vec<u8>",
+      "type": "string"
+    },
+    "ContractInfo": {
+      "description": "code hash and address of a contract",
+      "type": "object",
+      "required": [
+        "address",
+        "code_hash"
+      ],
+      "properties": {
+        "address": {
+          "description": "contract's address in HumanAddr",
+          "allOf": [
+            {
+              "$ref": "#/definitions/HumanAddr"
+            }
+          ]
+        },
+        "code_hash": {
+          "description": "contract's code hash string",
+          "type": "string"
+        }
+      }
+    },
+    "FtokenConfig": {
+      "description": "config of the ftoken contract",
+      "type": "object",
+      "required": [
+        "decimals",
+        "index",
+        "name",
+        "symbol"
+      ],
+      "properties": {
+        "decimals": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "index": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "name": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        }
+      }
+    },
+    "HumanAddr": {
+      "type": "string"
+    }
+  }
+}

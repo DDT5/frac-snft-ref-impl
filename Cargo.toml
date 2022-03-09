@@ -1,6 +1,9 @@
 [workspace]
 members = [
-  # Packages
-  "fsnft",
-  "ftoken",
+  # contracts
+  "contracts/factory",
+  "contracts/ftoken",
+  
+  # packages
+  "fsnft_utils",
 ]
