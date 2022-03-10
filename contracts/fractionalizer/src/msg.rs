@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use secret_toolkit::utils::{InitCallback, HandleCallback};  
 
-use crate::contract::{BLOCK_SIZE};
+use crate::{contract::{BLOCK_SIZE}, state::UploadedFtkn};
 
+use fsnft_utils::{FtokenContrInit, FtokenInfo, FtokenConf, UndrNftInfo};
 
 /////////////////////////////////////////////////////////////////////////////////
 // Init message
@@ -12,6 +13,7 @@ use crate::contract::{BLOCK_SIZE};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
+    pub uploaded_ftoken: UploadedFtkn,
 }
 
 
@@ -23,12 +25,12 @@ pub struct InitMsg {
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     /// Function for users to call. When called, fsnft contract will register with SNIP721 contract
-    Register {
-        /// The SNIP721 contract address to registered with
-        reg_addr: HumanAddr,
-        /// The SNIP721 contract code hash
-        reg_hash: String,
-    },
+    // RegisterNftContr {
+    //     /// The SNIP721 contract code hash
+    //     reg_hash: String,
+    //     /// The SNIP721 contract address to register with
+    //     reg_addr: HumanAddr,
+    // },
     /// Receiver interface function for SNIP721 contract. Msg to be received from SNIP721 contract
     /// BatchReceiveNft may be a HandleMsg variant of any contract that wants to implement a receiver
     /// interface.  BatchReceiveNft, which is more informative and more efficient, is preferred over
@@ -51,26 +53,33 @@ pub enum HandleMsg {
         token_id: String
     },
     /// `send` an NFT that this contract has permission to transfer
-    SendNft {
-        nft_contr_addr: HumanAddr,
-        nft_contr_hash: String,
-        /// address to send the token to
-        contract: HumanAddr,
-        token_id: String,
-        msg: Option<Binary>,
-    },
-    /// Instantiates ftoken contract
-    InstantiateFtoken {
-        name: String,
-        symbol: String,
-        decimals: u8,
-        callback_code_hash: String,
-    },
+    // SendNft {
+    //     nft_contr_addr: HumanAddr,
+    //     nft_contr_hash: String,
+    //     /// address to send the token to
+    //     contract: HumanAddr,
+    //     token_id: String,
+    //     msg: Option<Binary>,
+    // },
+    /// Msg sent by user to instantiate ftoken contract
+    // InstantiateFtoken {
+    //     name: String,
+    //     symbol: String,
+    //     decimals: u8,
+    //     callback_code_hash: String,
+    // },
     /// Receiver for InitResponse callback from ftoken contract  
-    RegisterFtoken {
-        /// ftoken contract id
-        ftoken_config: FtokenConfig,
-        contract_info: ContractInfo,
+    ReceiveFtokenCallback {
+        ftoken_contr: FtokenInfo,
+    },
+    /// User calls this function to fractionalize an NFT
+    /// User must first give permission to fractionalizer to transfer the NFT
+    Fractionalize {
+        /// Underlying NFT information
+        /// token id and SNIP721 contract address and hash
+        nft_info: UndrNftInfo,
+        /// configuration of fractionalized token
+        ftkn_conf: FtokenConf,
     },
 }
 
@@ -110,9 +119,13 @@ pub struct InitConfig {
     enable_burn: Option<bool>,
 }
 
+
+/// Msg sent to ftoken contract to instantiate it
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub struct InitFtoken{
+pub struct InitFtoken {
+    /// fractionalizer contract hash and address
+    pub init_info: FtokenContrInit,
     pub name: String,
     pub admin: Option<HumanAddr>,
     pub symbol: String,
@@ -159,9 +172,9 @@ pub enum InterContrMsg{
 }
 
 impl InterContrMsg {
-    pub fn register_receive(code_hash: String) -> Self {
+    pub fn register_receive(code_hash: &String) -> Self {
         InterContrMsg::RegisterReceiveNft {
-            code_hash,
+            code_hash: code_hash.to_string(),
             also_implements_batch_receive_nft: Some(true), 
             padding: None, // TODO add padding calculation
         }

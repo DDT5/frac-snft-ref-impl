@@ -6,8 +6,17 @@ use serde::{Deserialize, Serialize};
 use crate::batch;
 use crate::transaction_history::{RichTx, Tx};
 use crate::viewing_key::ViewingKey;
-use cosmwasm_std::{Binary, HumanAddr, StdError, StdResult, Uint128};
+use cosmwasm_std::{
+    Binary, HumanAddr, StdError, StdResult, Uint128,
+    // ftoken addition:
+    Env,
+};
 use secret_toolkit::permit::Permit;
+
+// ftoken additions:
+use fsnft_utils::{FtokenContrInit, FtokenInfo, ContractInfo, UndrNftInfo};
+use secret_toolkit::utils::{HandleCallback}; 
+use crate::contract::{RESPONSE_BLOCK_SIZE};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 pub struct InitialBalance {
@@ -15,8 +24,10 @@ pub struct InitialBalance {
     pub amount: Uint128,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone)] // ftoken addition: Clone
 pub struct InitMsg {
+    /// ftoken addition: fractionalizer contract hash and idx
+    pub init_info: FtokenContrInit,
     pub name: String,
     pub admin: Option<HumanAddr>,
     pub symbol: String,
@@ -74,6 +85,56 @@ impl InitConfig {
 
     pub fn burn_enabled(&self) -> bool {
         self.enable_burn.unwrap_or(false)
+    }
+}
+
+/// ftoken addition:
+/// Callback msgs to send upon instantiation of ftoken contract
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum InitRes {
+    /// Callback to fractionalizer contract upon instantiation of ftoken contract
+    ReceiveFtokenCallback {
+        ftoken_contr: FtokenInfo,
+    },
+    /// set viewing key sent to nft contract
+    SetViewingKey {
+        /// desired viewing key
+        key: String,
+        /// optional message length padding
+        padding: Option<String>,
+    },
+}
+
+impl HandleCallback for InitRes {
+    const BLOCK_SIZE: usize = RESPONSE_BLOCK_SIZE;
+}
+
+/// ftoken addition:
+/// Implements register_receieve of ftoken contract on fractionalizer
+impl InitRes {
+    pub fn register_receive(msg: InitMsg, env: Env) -> Self {
+        InitRes::ReceiveFtokenCallback {
+            ftoken_contr: FtokenInfo {
+                idx: msg.init_info.idx,
+                depositor: msg.init_info.depositor,
+                ftoken_contr: ContractInfo { 
+                    code_hash: env.contract_code_hash, 
+                    address: env.contract.address,
+                },
+                nft_info: UndrNftInfo {
+                    token_id: msg.init_info.nft_info.token_id,
+                    nft_contr: ContractInfo {
+                        code_hash: msg.init_info.nft_info.nft_contr.code_hash,
+                        address: msg.init_info.nft_info.nft_contr.address,
+                    },
+                },
+                name: msg.name,
+                symbol: msg.symbol,
+                decimals: msg.decimals,
+                
+            }
+        }
     }
 }
 
@@ -218,6 +279,22 @@ pub enum HandleMsg {
         permit_name: String,
         padding: Option<String>,
     },
+
+    /// ftoken addition: SNIP721 receiver
+    /// Receiver interface function for SNIP721 contract. Msg to be received from SNIP721 contract
+    /// BatchReceiveNft may be a HandleMsg variant of any contract that wants to implement a receiver
+    /// interface.  BatchReceiveNft, which is more informative and more efficient, is preferred over
+    /// ReceiveNft.
+    BatchReceiveNft {
+        /// address that sent the tokens.  There is no ReceiveNft field equivalent to this
+        sender: HumanAddr,
+        /// previous owner of sent tokens.  This is equivalent to the ReceiveNft `sender` field
+        from: HumanAddr,
+        /// tokens that were sent
+        token_ids: Vec<String>,
+        /// optional message to control receiving logic
+        msg: Option<Binary>,
+    },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
@@ -351,6 +428,8 @@ pub enum QueryMsg {
         permit: Permit,
         query: QueryWithPermit,
     },
+    // temporary for DEBUGGING. Must remove for final implementation
+    DebugQuery {},
 }
 
 impl QueryMsg {
@@ -436,6 +515,11 @@ pub enum QueryAnswer {
     Minters {
         minters: Vec<HumanAddr>,
     },
+    // temporary for DEBUGGING. Must remove for final implementation
+    DebugQAnswer {
+        ftokeninfo: FtokenInfo,
+        nftviewingkey: ViewingKey,
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]

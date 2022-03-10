@@ -45,5 +45,9 @@ rand_chacha = { version = "0.2.2", default-features = false }
 rand_core = { version = "0.5.1", default-features = false }
 sha2 = { version = "0.9.1", default-features = false }
 
+# ftoken additions
+fsnft_utils = { path = "../../fsnft_utils" }
+# query-authentication = {git = "https://github.com/securesecrets/query-authentication", tag = "v1.2.0"}
+
 [dev-dependencies]
 cosmwasm-schema = { version = "0.9.2" }

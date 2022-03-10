@@ -68,7 +68,7 @@ function assert_eq() {
         log "$message"
         return 1
     fi
-    echo "assert_eq SUCCESS"
+    log "assert_eq SUCCESS"
     return 0
 }
 
@@ -89,7 +89,7 @@ function assert_ne() {
         log "$message"
         return 1
     fi
-    echo "assert_ne PASSED"
+    log "assert_ne PASSED"
     return 0
 }
 
@@ -183,6 +183,10 @@ function data_of() {
     "$@" | jq -r '.output_data_as_string'
 }
 
+function get_err() {
+    jq -r '.output_error[]' <<<"$1"
+}
+
 function get_generic_err() {
     jq -r '.output_error.generic_err.msg' <<<"$1"
 }
@@ -262,8 +266,8 @@ function handle() {
     local msg="$2" # json msg
     local from="$3" # eg "a"
     
-    tx_hash="$(tx_of secretcli tx compute execute $contract_addr $msg ${FROM[${from}]})"
-    echo $tx_hash
+    tx_hash="$(tx_of secretcli tx compute execute "$contract_addr" "$msg" ${FROM[${from}]})"
+    echo "$tx_hash"
 }
 
 # handle-wait: handle then wait_for_tx. echoes "(secretcli query compute tx "$tx_hash")"
@@ -273,12 +277,12 @@ function handle_w() {
     local from="$3" # eg "a"
 
     local msg_wait
-    msg_wait="$(echo $msg | jq 'keys[0]')"
+    msg_wait="$(echo "$msg" | jq 'keys[0]')"
 
-    tx_hash="$(compute_execute $contract_addr $msg ${FROM[${from}]})"
-    resp="$(wait_for_compute_tx "$tx_hash" "waiting to $msg_wait")"
+    tx_hash="$(compute_execute "$contract_addr" "$msg" ${FROM[${from}]})"
+    resp="$(wait_for_compute_tx "$tx_hash" "waiting to $msg_wait")"    
     # log $resp
-    echo $resp
+    echo "$resp"
 }
 
 function gas_of() {
@@ -286,14 +290,14 @@ function gas_of() {
     local txt="$2"  # describe what the tx is
     local gas
 
-    gas="$(secretcli q tx $txh | jq -r '.gas_used')"
+    gas="$(secretcli q tx "$txh" | jq -r '.gas_used')"
     echo "$txt: $gas"
 }
 
 function log_gas() {
     local txh="$1"
     local txt="$2"
-    tx_gas="$(gas_of $txh $txt)"
+    tx_gas="$(gas_of "$txh" "$txt")"
     gas_log="$(echo "${gas_log}" $'\n'"${tx_gas}")"
     # log "$gas_log"
 }
@@ -314,11 +318,11 @@ function create_vk() {
         log "creating viewing key for \"$key\""
         tx_hash[$key]="$(compute_execute "$contract_addr" "$create_viewing_key_message" ${FROM[$key]})"
     done
-    wait_for_tx ${tx_hash[d]} "waiting for create_vk"
+    wait_for_tx "${tx_hash[d]}" "waiting for create_vk"
 
     for key in "${KEY[@]}"; do
-        viewing_key_response="$(data_of secretcli q compute tx "${tx_hash[$key]}")"
-        VK[$key]="$(jq -er '.create_viewing_key.key' <<<"$viewing_key_response")"
+        viewing_key_response[$key]="$(data_of secretcli q compute tx "${tx_hash[$key]}")"
+        VK[$key]="$(jq -er '.create_viewing_key.key' <<<"${viewing_key_response[$key]}")"
         log "viewing key for \"$key\" set to ${VK[$key]}"
         if [[ "${VK[$key]}" =~ ^api_key_ ]]; then
             log "viewing key \"$key\" seems valid"
@@ -348,7 +352,7 @@ function create_vk_s721() {
         log "creating viewing key for \"$key\""
         tx_hash[$key]="$(compute_execute "$contract_addr" "$create_viewing_key_message" ${FROM[$key]})"
     done
-    wait_for_tx ${tx_hash[d]} "waiting for create_vk"
+    wait_for_tx "${tx_hash[d]}" "waiting for create_vk"
 
     for key in "${KEY[@]}"; do
         viewing_key_response[$key]="$(data_of secretcli q compute tx "${tx_hash[$key]}")"
@@ -401,19 +405,19 @@ function makePermit() {
         },
         "memo": ""
     }'
-    echo $PERMIT > ~/code/local/permits/permit${key}.json
-    secretcli tx sign-doc ~/code/local/permits/permit${key}.json --from $key > ~/code/local/permits/sig${key}.json
+    echo "$PERMIT" > ~/code/local/permits/permit"${key}".json
+    secretcli tx sign-doc ~/code/local/permits/permit"${key}".json --from "$key" > ~/code/local/permits/sig"${key}".json
     # cat ~/code/local/permits/sig.json
     permit_params='{
-        "allowed_tokens": '$(echo $PERMIT | jq -r '.msgs[0].value.allowed_tokens')',
-        "permit_name": "'"$(echo $PERMIT | jq -r '.msgs[0].value.permit_name')"'",
-        "chain_id": "'"$(echo $PERMIT | jq -r '.chain_id')"'",
-        "permissions": '$(echo $PERMIT | jq -r '.msgs[0].value.permissions')'
+        "allowed_tokens": '$(echo "$PERMIT" | jq -r '.msgs[0].value.allowed_tokens')',
+        "permit_name": "'"$(echo "$PERMIT" | jq -r '.msgs[0].value.permit_name')"'",
+        "chain_id": "'"$(echo "$PERMIT" | jq -r '.chain_id')"'",
+        "permissions": '$(echo "$PERMIT" | jq -r '.msgs[0].value.permissions')'
     }'
 
     permit_q='{
-        "params":'$(echo $permit_params)',
-        "signature": '$(cat ~/code/local/permits/sig${key}.json)'
+        "params":'$(echo "$permit_params")',
+        "signature": '$(cat ~/code/local/permits/sig"${key}".json)'
     }'
     # remove white space
     permit_q="$(echo $permit_q | sed  's/ *//g')"
@@ -429,12 +433,12 @@ function makePermit() {
 
 # fund account aliases `c` and `d`
 function fundCD() {
-    secretcli tx bank send ${ADDRESS[a]} ${ADDRESS[c]} 1000000000000uscrt -y
-    txh="$(tx_of secretcli tx bank send ${ADDRESS[b]} ${ADDRESS[d]} 1000000000000uscrt -y)"
-    wait_for_tx $txh "waiting"
+    secretcli tx bank send "${ADDRESS[a]}" "${ADDRESS[c]}" 1000000000000uscrt -y
+    txh="$(tx_of secretcli tx bank send "${ADDRESS[b]}" "${ADDRESS[d]}" 1000000000000uscrt -y)"
+    wait_for_tx "$txh" "waiting"
 
-    secretcli query bank balances ${ADDRESS[c]}
-    secretcli query bank balances ${ADDRESS[d]}
+    secretcli query bank balances "${ADDRESS[c]}"
+    secretcli query bank balances "${ADDRESS[d]}"
 }
 
 # ########################################################################
@@ -444,22 +448,24 @@ function fundCD() {
 # secretcli query compute list-contract-by-code 1
 
 function doInit() {
-    # instantiate factory contract
-    init_msg='{}'
-    factory="$(create_contract '.' "factory" "$init_msg")"
-    factory_h="$(secretcli q compute contract-hash $factory | sed 's/^0x//')"
-
-    # instantiate SNIP721 contract
-    init_msg='{"name":"myNFT","symbol":"NFT","entropy":"foo bar","config":{"public_token_supply":true,"public_owner":true,"enable_sealed_metadata":true,"unwrapped_metadata_is_private":true,"minter_may_update_metadata":true,"owner_may_update_metadata":true,"enable_burn":true}}'
-    snip721="$(create_contract './tests/snip721' "snip721contract" "$init_msg")"
-    snip721_h="$(secretcli q compute contract-hash $snip721 | sed 's/^0x//')"
-
     # upload ftoken (no instantiation)
     # prng_seed="$(echo "foo bar" | base64)"
     # init_msg='{"name":"myftoken","symbol":"FTKN","decimals":6,"prng_seed":"'"$prng_seed"'","initial_balances":[{"address":"'"${ADDRESS[a]}"'","amount":"1000000"}]}'
-    code_id="$(upload_code '.' "ftoken")"
+    ftkn_code_id="$(upload_code '.' "ftoken")"
     # ftoken=
-    ftoken_h="$(secretcli query compute list-code | jq -r '.[] | select(.id=='$code_id') | .data_hash ')"
+    ftoken_h="$(secretcli query compute list-code | jq -r '.[] | select(.id=='"$ftkn_code_id"') | .data_hash ')"
+    
+    # instantiate fract contract
+    init_msg='{"uploaded_ftoken":{"code_id":'$ftkn_code_id',"code_hash":"'"$ftoken_h"'"}}'
+    fract="$(create_contract '.' "fractionalizer" "$init_msg")"
+    fract_h="$(secretcli q compute contract-hash "$fract" | sed 's/^0x//')"
+
+    # instantiate SNIP721 contract
+    init_msg='{"name":"myNFT","symbol":"NFT","entropy":"foo bar","config":{"public_token_supply":true,"public_owner":true,"enable_sealed_metadata":true,"unwrapped_metadata_is_private":true,"minter_may_update_metadata":true,"owner_may_update_metadata":true,"enable_burn":true}}'
+    snip721="$(create_contract './fsnft_utils/tests/snip721' "snip721contract" "$init_msg")"
+    snip721_h="$(secretcli q compute contract-hash "$snip721" | sed 's/^0x//')"
+
+
 }
 
 # ########################################################################
@@ -471,54 +477,66 @@ function doInit() {
 # ------------------------------------------------------------------------
 function doHandles() {
     # mint nft
-    handle_w $snip721 '{"mint_nft":{}}' a
+    handle_w "$snip721" '{"mint_nft":{}}' a
 
     # reveal
-    handle_w $snip721 '{"reveal":{"token_id":"0"}}' a
+    handle_w "$snip721" '{"reveal":{"token_id":"0"}}' a
     
     # change public and private metadata (note need to `reveal` first before private metadata can be changed)
     PuMetDat='{"token_uri":"public_uri_all_can_see"}'
     PrMetDat='{"token_uri":"here_is_private_uri"}'
-    handle_w $snip721 '{"set_metadata":{"token_id":"0","public_metadata":'$PuMetDat',"private_metadata":'$PrMetDat'}}' a
+    handle_w "$snip721" '{"set_metadata":{"token_id":"0","public_metadata":'"$PuMetDat"',"private_metadata":'"$PrMetDat"'}}' a
 
-    # # straight transfer of NFT from ADDRESS[a] to factory and back
-    # handle_w $snip721 '{"transfer_nft":{"recipient":"'"$factory"'","token_id":"0"}}' a
-    # handle_w $factory '{"transfer_nft":{"nft_contr_addr":"'"$snip721"'","nft_contr_hash":"'"$snip721_h"'","recipient":"'"${ADDRESS[a]}"'","token_id":"0"}}' a
+    # # straight transfer of NFT from ADDRESS[a] to fract and back
+    # handle_w $snip721 '{"transfer_nft":{"recipient":"'"$fract"'","token_id":"0"}}' a
+    # handle_w $fract '{"transfer_nft":{"nft_contr_addr":"'"$snip721"'","nft_contr_hash":"'"$snip721_h"'","recipient":"'"${ADDRESS[a]}"'","token_id":"0"}}' a
 
-    # set_whitelisted_approval for factory contract to transfer
+    # set_whitelisted_approval for fract contract to transfer
     msg='{"set_whitelisted_approval":{
-        "address":"'"${factory}"'",
+        "address":"'"${fract}"'",
         "token_id":"0",
         "view_owner":"approve_token",
         "view_private_metadata":"approve_token",
         "transfer":"approve_token"
         }}'
     msg="$(echo $msg | sed  's/ *//g')"
-    handle_w $snip721 $msg a
+    handle_w "$snip721" "$msg" a
 
 
-    # register receive with SNIP721 contract to enable `send`
-    handle_w $factory '{"register":{"reg_addr":"'"$snip721"'","reg_hash":"'"$snip721_h"'"}}' a
+    # # register receive with SNIP721 contract to enable `send`
+    # handle_w "$fract" '{"register_nft_contr":{"reg_addr":"'"$snip721"'","reg_hash":"'"$snip721_h"'"}}' a
 
-    # # transfer NFT from ADDRESS[a] to factory, called by factory contract after getting permission
+    # # transfer NFT from ADDRESS[a] to fract, called by fract contract after getting permission
     # msg="$(echo "heres_some_message_hello" | base64)"
-    # handle_w $factory '{"send_nft":{"nft_contr_addr":"'"$snip721"'","nft_contr_hash":"'"$snip721_h"'","contract":"'"$ftoken"'","token_id":"0","msg":"'"$msg"'"}}' a
+    # handle_w $fract '{"send_nft":{"nft_contr_addr":"'"$snip721"'","nft_contr_hash":"'"$snip721_h"'","contract":"'"$ftoken"'","token_id":"0","msg":"'"$msg"'"}}' a
     # # echo $resp | jq '.output_logs[0].attributes[] | select(.key=="msg") | .value' | base64 -d
 
-    msg='{"instantiate_ftoken":{
-        "name":"ftokencoin",
-        "symbol":"FTKN",
-        "decimals":6,
-        "callback_code_hash":"'"$ftoken_h"'"
+    msg='{"fractionalize":{
+            "nft_info":{
+                "token_id":"0",
+                "nft_contr":{
+                    "code_hash":"'"$snip721_h"'",
+                    "address":"'"$snip721"'"
+                }
+            },
+            "ftkn_conf":{
+                "name":"ftokencoin",
+                "symbol":"FTKN",
+                "supply":"1000000",
+                "decimals":6
+            }
         }
     }'
     msg="$(echo $msg | sed  's/ *//g')"
-    handle_w $factory $msg a
-    ftoken0="$(secretcli query compute list-contract-by-code 3 | jq -r '.[0].address')"
+    handle_w "$fract" "$msg" a
+    ftoken0="$(secretcli query compute list-contract-by-code 1 | jq -r '.[0].address')"  # <-- note: ensure user is able to query the created ftoken contract address
+
+    # transfer some ftokens to address b
+    handle_w "$ftoken0" '{"transfer":{"recipient":"'"${ADDRESS[b]}"'","amount":"300000"}}' a
 }
 
 function ftokenHandles() {
-    handle_w $ftoken0 '{"mint":{"recipient":"'"${ADDRESS[a]}"'","amount":"1000000"}}'
+    handle_w "$ftoken0" '{"mint":{"recipient":"'"${ADDRESS[a]}"'","amount":"1000000"}}'
 }
 
 # ------------------------------------------------------------------------
@@ -526,30 +544,33 @@ function ftokenHandles() {
 # ------------------------------------------------------------------------
 function doQueries() {
     # SNIP721 queries
-    compute_query $snip721 '{"contract_info":{}}'
-    compute_query $snip721 '{"contract_config":{}}'
-    compute_query $snip721 '{"minters":{}}'
-    compute_query $snip721 '{"num_tokens":{}}'
-    compute_query $snip721 '{"all_tokens":{}}'
-    compute_query $snip721 '{"owner_of":{"token_id":"0"}}'
-    compute_query $snip721 '{"nft_info":{"token_id":"0"}}'
-    compute_query $snip721 '{"all_nft_info":{"token_id":"0"}}'
-    compute_query $snip721 '{"private_metadata":{"token_id":"0","viewer":{"address":"'"${ADDRESS[a]}"'","viewing_key":"'"${VK_nft[a]}"'"} }}' 
-    compute_query $snip721 '{"nft_dossier":{"token_id":"0"}}' | jq
-    compute_query $snip721 '{"batch_nft_dossier":{"token_ids":["0"]}}'
-    compute_query $snip721 '{"token_approvals":{"token_id":"0","viewing_key":"'"${VK_nft[a]}"'"}}' | jq
-    compute_query $snip721 '{"inventory_approvals":{"address":"'"${ADDRESS[a]}"'","viewing_key":"'"${VK_nft[a]}"'"}}' | jq
+    compute_query "$snip721" '{"contract_info":{}}'
+    compute_query "$snip721" '{"contract_config":{}}'
+    compute_query "$snip721" '{"minters":{}}'
+    compute_query "$snip721" '{"num_tokens":{}}'
+    compute_query "$snip721" '{"all_tokens":{}}'
+    compute_query "$snip721" '{"owner_of":{"token_id":"0"}}'
+    compute_query "$snip721" '{"nft_info":{"token_id":"0"}}'
+    compute_query "$snip721" '{"all_nft_info":{"token_id":"0"}}'
+    compute_query "$snip721" '{"private_metadata":{"token_id":"0","viewer":{"address":"'"${ADDRESS[a]}"'","viewing_key":"'"${VK_nft[a]}"'"} }}' 
+    compute_query "$snip721" '{"nft_dossier":{"token_id":"0"}}' | jq
+    compute_query "$snip721" '{"batch_nft_dossier":{"token_ids":["0"]}}'
+    compute_query "$snip721" '{"token_approvals":{"token_id":"0","viewing_key":"'"${VK_nft[a]}"'"}}' | jq
+    compute_query "$snip721" '{"inventory_approvals":{"address":"'"${ADDRESS[a]}"'","viewing_key":"'"${VK_nft[a]}"'"}}' | jq
     
     # compute_query $snip721 '{"with_permit":{"permit":'$(echo $permit_q)',"query":{"nft_dossier":{"token_id":"0"}}}}' 
-    compute_query $snip721 '{"with_permit":{"permit":'$permit_q',"query":{"nft_dossier":{"token_id":"0"}}}}' 
+    compute_query "$snip721" '{"with_permit":{"permit":'"$permit_q"',"query":{"nft_dossier":{"token_id":"0"}}}}' 
     
     # ftoken (SNIP20) queries
-    compute_query $ftoken0 '{"token_info":{}}'
-    compute_query $ftoken0 '{"token_config":{}}'
-    compute_query $ftoken0 '{"contract_status":{}}'
-    compute_query $ftoken0 '{"exchange_rate":{}}'
-    compute_query $ftoken0 '{"minters":{}}'
-    compute_query $ftoken0 '{"balance":{"address":"'"${ADDRESS[a]}"'","key":"'"${VK_token[a]}"'"}}'
+    compute_query "$ftoken0" '{"token_info":{}}'
+    compute_query "$ftoken0" '{"token_config":{}}'
+    compute_query "$ftoken0" '{"contract_status":{}}'
+    compute_query "$ftoken0" '{"exchange_rate":{}}'
+    compute_query "$ftoken0" '{"minters":{}}'
+    compute_query "$ftoken0" '{"balance":{"address":"'"${ADDRESS[a]}"'","key":"'"${VK_token[a]}"'"}}'
+    
+    compute_query "$ftoken0" '{"debug_query":{}}' | jq '.debug_q_answer.nftviewingkey'
+    
     
 }
 
@@ -559,10 +580,10 @@ function doQueries() {
 function main() {
     fundCD
     doInit
-    create_vk_s721 $snip721; declare -g -A VK_nft=([a]="${VK[a]}" [b]="${VK[b]}" [c]="${VK[c]}" [d]="${VK[d]}")
+    create_vk_s721 "$snip721"; declare -g -A VK_nft=([a]="${VK[a]}" [b]="${VK[b]}" [c]="${VK[c]}" [d]="${VK[d]}")
     # makePermit $snip721 ${KEY[0]}
     doHandles
-    # create_vk $ftoken0; declare -g -A VK_token=([a]="${VK[a]}" [b]="${VK[b]}" [c]="${VK[c]}" [d]="${VK[d]}")
+    create_vk "$ftoken0"; declare -g -A VK_token=([a]="${VK[a]}" [b]="${VK[b]}" [c]="${VK[c]}" [d]="${VK[d]}")
     # doQueries
 
     # print gas_log and success msg

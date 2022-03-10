@@ -84,9 +84,7 @@ Once the user deposits a token into the vault, the token MUST be kept in the con
 
 ```json
 {
-  "permission_type": { // or Access_level ... todo
-    "transfer": "None" // exact json schema  todo
-    }
+  "token_approvals": [] 
 }
 ```
 

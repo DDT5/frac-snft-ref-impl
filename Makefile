@@ -12,12 +12,12 @@ _build:
 
 .PHONY: compress-wasm
 compress-wasm:
-	@# compress factory contract
-	cp ./target/wasm32-unknown-unknown/release/factory.wasm ./factory.wasm
+	@# compress fractionalizer contract
+	cp ./target/wasm32-unknown-unknown/release/fractionalizer.wasm ./fractionalizer.wasm
 	@## The following line is not necessary, may work only on linux (extra size optimization)
-	wasm-opt -Os ./factory.wasm -o ./factory.wasm
-	cat ./factory.wasm | gzip -9 > ./factory.wasm.gz
-	rm ./factory.wasm
+	wasm-opt -Os ./fractionalizer.wasm -o ./fractionalizer.wasm
+	cat ./fractionalizer.wasm | gzip -9 > ./fractionalizer.wasm.gz
+	rm ./fractionalizer.wasm
 	
 	@# compress ftoken contract
 	cp ./target/wasm32-unknown-unknown/release/ftoken.wasm ./ftoken.wasm

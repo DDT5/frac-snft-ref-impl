@@ -1,5 +1,5 @@
 [package]
-name = "factory"
+name = "fractionalizer"
 version = "0.1.0"
 authors = ["DDT5"]
 edition = "2018"

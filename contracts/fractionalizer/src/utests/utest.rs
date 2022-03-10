@@ -1,11 +1,11 @@
-#[cfg(test)]
 mod tests {
     // use super::*;
     use std::any::Any;
-    use crate::contract::{init}; //, handle, query
+    use crate::contract::{init,}; //, handle, query
     use crate::msg::{InitMsg};
     use crate::state::{
-        config_read,
+        config_r, ftkn_idx_r, ftkn_id_hash_r,
+        UploadedFtkn,
     };
     
     use cosmwasm_std::{
@@ -13,7 +13,7 @@ mod tests {
         Extern,
     };
 
-    use cosmwasm_std::testing::*;
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, MockStorage, MockApi, MockQuerier};
 
     fn init_helper_default() -> (
         StdResult<InitResponse>,
@@ -23,6 +23,7 @@ mod tests {
         let env = mock_env("instantiator", &[]);
 
         let init_msg = InitMsg {
+            uploaded_ftoken: UploadedFtkn::default(),
         };
 
         (init(&mut deps, env, init_msg), deps)
@@ -49,7 +50,15 @@ mod tests {
     fn test_init_sanity() {
         let (init_result, deps) = init_helper_default();
         assert_eq!(init_result.unwrap(), InitResponse::default());
-        let reg_contr = config_read(&deps.storage).load().unwrap();
-        assert_eq!(reg_contr.known_snip_721, vec![])
+        let reg_contr = config_r(&deps.storage).load().unwrap();
+        assert_eq!(reg_contr.known_snip_721, vec![]);
+        assert_eq!(ftkn_idx_r(&deps.storage).load().unwrap(), 0u32);
+        assert_eq!(ftkn_id_hash_r(&deps.storage).load().unwrap(), UploadedFtkn::default());
     }   
+
+    #[test]
+    fn test_fractionalization_works() {
+        // todo
+    }
+    
 }

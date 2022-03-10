@@ -4,6 +4,8 @@ use cosmwasm_std::{
     log, to_binary, Api, BankMsg, Binary, CanonicalAddr, Coin, CosmosMsg, Env, Extern,
     HandleResponse, HumanAddr, InitResponse, Querier, QueryResult, ReadonlyStorage, StdError,
     StdResult, Storage, Uint128,
+    // ftoken addition 
+    from_binary,
 };
 
 use crate::batch;
@@ -11,18 +13,29 @@ use crate::msg::QueryWithPermit;
 use crate::msg::{
     space_pad, ContractStatusLevel, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg,
     ResponseStatus::Success,
+    // ftoken addition:
+    InitRes
 };
 use crate::rand::sha_256;
 use crate::receiver::Snip20ReceiveMsg;
 use crate::state::{
     get_receiver_hash, read_allowance, read_viewing_key, set_receiver_hash, write_allowance,
     write_viewing_key, Balances, Config, Constants, ReadonlyBalances, ReadonlyConfig,
+    // ftoken addition:
+    write_ftkn_info, read_ftkn_info, write_nft_vk, read_nft_vk, write_nft_in_vault,
 };
 use crate::transaction_history::{
     get_transfers, get_txs, store_burn, store_deposit, store_mint, store_redeem, store_transfer,
 };
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 use secret_toolkit::permit::{validate, Permission, Permit, RevokedPermits};
+
+// ftoken additions:
+use secret_toolkit::{
+    utils::{HandleCallback, Query},
+    snip721::{ViewerInfo, OwnerOfResponse},
+};
+use fsnft_utils::{UndrNftInfo, S721QueryMsg};
 
 /// We make sure that responses from `handle` are padded to a multiple of this size.
 pub const RESPONSE_BLOCK_SIZE: usize = 256;
@@ -33,6 +46,10 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
+
+    let env_clone = env.clone();
+    let msg_clone = msg.clone();
+
     // Check name, symbol, decimals
     if !is_valid_name(&msg.name) {
         return Err(StdError::generic_err(
@@ -49,7 +66,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     }
 
     let init_config = msg.config();
-    let admin = msg.admin.unwrap_or(env.message.sender);
+    let admin = msg.admin.unwrap_or(env.message.sender.clone());
     let canon_admin = deps.api.canonical_address(&admin)?;
 
     let mut total_supply: u128 = 0;
@@ -93,7 +110,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         redeem_is_enabled: init_config.redeem_enabled(),
         mint_is_enabled: init_config.mint_enabled(),
         burn_is_enabled: init_config.burn_enabled(),
-        contract_address: env.contract.address,
+        contract_address: env.contract.address.clone(),
     })?;
     config.set_total_supply(total_supply);
     config.set_contract_status(ContractStatusLevel::NormalRun);
@@ -104,7 +121,44 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     };
     config.set_minters(minters)?;
 
-    Ok(InitResponse::default())
+    // Ok(InitResponse::default())
+    
+    // ftoken addition: InitResponse to fractionalizer contract to register this ftoken contract
+    let reg_msg = InitRes::register_receive(msg_clone, env_clone);
+    let cosmos_msg_reg = reg_msg.to_cosmos_msg(
+        msg.init_info.fract_hash,
+        env.message.sender.clone(),
+        None,
+    )?; 
+
+    // ftoken addition: save ftoken_info
+    let val =  match reg_msg {
+        InitRes::ReceiveFtokenCallback { ftoken_contr } => ftoken_contr,
+        _ => return Err(StdError::generic_err("ftoken contract failed to create register receive message")),
+    };
+
+    write_ftkn_info(&mut deps.storage, &val)?;
+
+    // set viewing key. Alternatively use query permits, but possible that some older NFTs may not implement query permits
+    let vk = ViewingKey::new(&env, &prng_seed_hashed, &deps.api.canonical_address(&env.contract.address)?.as_slice());
+    write_nft_vk(&mut deps.storage, &vk)?;
+    let set_vk_msg = InitRes::SetViewingKey { key: vk.to_string(), padding: None };
+    let cosmos_msg_setvk = set_vk_msg.to_cosmos_msg(
+        msg.init_info.nft_info.nft_contr.code_hash,
+        msg.init_info.nft_info.nft_contr.address,
+        None,
+    )?;
+
+    // create cosmos msg vector
+    let messages = vec![
+        cosmos_msg_reg,
+        cosmos_msg_setvk,
+    ];
+
+    Ok(InitResponse {
+        messages,
+        log: vec![],
+    })
 }
 
 fn pad_response(response: StdResult<HandleResponse>) -> StdResult<HandleResponse> {
@@ -235,6 +289,21 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::RemoveMinters { minters, .. } => remove_minters(deps, env, minters),
         HandleMsg::SetMinters { minters, .. } => set_minters(deps, env, minters),
         HandleMsg::RevokePermit { permit_name, .. } => revoke_permit(deps, env, permit_name),
+
+        // ftoken addition: SNIP721 receiver interface
+        HandleMsg::BatchReceiveNft { 
+            sender, 
+            from, 
+            token_ids, 
+            msg 
+        } => try_batch_receive_nft(
+            deps,
+            env,
+            sender, 
+            from, 
+            token_ids, 
+            msg,
+        ),
     };
 
     pad_response(response)
@@ -248,9 +317,26 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
         QueryMsg::ExchangeRate {} => query_exchange_rate(&deps.storage),
         QueryMsg::Minters { .. } => query_minters(deps),
         QueryMsg::WithPermit { permit, query } => permit_queries(deps, permit, query),
+        // temporary for DEBUGGING. Must remove for final implementation
+        QueryMsg::DebugQuery {} => debug_query(deps),
         _ => viewing_keys_queries(deps, msg),
     }
 }
+
+/// temporary for DEBUGGING. Must remove for final implementation
+fn debug_query<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+) -> QueryResult {
+    let ftokeninfo = read_ftkn_info(&deps.storage)?;
+    let nftviewingkey = read_nft_vk(&deps.storage)?;
+    
+    let resp = QueryAnswer::DebugQAnswer {
+        ftokeninfo,
+        nftviewingkey,
+    };
+    to_binary(&(resp))
+}
+
 
 fn permit_queries<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
@@ -1700,6 +1786,80 @@ fn revoke_permit<S: Storage, A: Api, Q: Querier>(
     })
 }
 
+/// ftoken addition:
+/// function to process `send` message from SNIP721 token (called by fractionalizer contract)
+/// * `msg` - msg sent by NFT contract, called by fractionalizer contract. Type: `UndrNftInfo` 
+pub fn try_batch_receive_nft<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    sender: HumanAddr,
+    from: HumanAddr,
+    token_ids: Vec<String>,
+    msg: Option<Binary>,
+) -> StdResult<HandleResponse> {
+    // deserialize msg
+    let undr_nft: UndrNftInfo = from_binary(&msg.unwrap())?;
+
+    // temporary: log msg received
+    let log_msg = vec![
+        log("sender", &sender),
+        log("from", &from),
+        log("token_ids", format!("{:?}", &token_ids)),
+        log("msg", format!("{:?}", &undr_nft))  
+    ];
+
+    // verify sender is the expected SNIP721 contract
+    let nft_contr = read_ftkn_info(&deps.storage)?.nft_info.nft_contr;
+    if env.message.sender != nft_contr.address {
+        return Err(StdError::generic_err("recieving `send` msg from incorrect NFT contract"))
+    };
+
+    // query to check if properly received underlying NFT    
+    let query = S721QueryMsg::OwnerOf {
+        token_id: undr_nft.token_id.clone(),
+        viewer: Some(ViewerInfo {
+            address: env.contract.address.clone(),
+            viewing_key: read_nft_vk(&deps.storage)?.to_string(),
+        }),
+        include_expired: Some(false),
+    };
+    let query_response: OwnerOfResponse = query.query(
+        &deps.querier,
+        nft_contr.code_hash,
+        nft_contr.address,
+    )?;
+
+    if query_response.owner_of.owner != Some(env.contract.address) {
+        return Err(StdError::generic_err("nft not transferred to vault, reversing transaction"))
+    } else if query_response.owner_of.approvals != vec![] {
+        return Err(StdError::generic_err(
+            "there are current approvals to transfer, which is not allowed when nft is in the vault"
+        ))
+    }
+    // optional using query permits
+    // let permit = Permit {
+    //     params: PermitParams {
+    //         allowed_tokens: todo!(),
+    //         permit_name: todo!(),
+    //         chain_id: todo!(),
+    //         permissions: todo!(),
+    //     },
+    //     signature: PermitSignature {
+    //         pub_key: todo!(),
+    //         signature: todo!(),
+    //     },
+    // };    
+
+    // acknowledge receipt of nft
+    write_nft_in_vault(&mut deps.storage, &undr_nft, &true);
+    
+    Ok(HandleResponse {
+        messages: vec![],
+        log: log_msg,
+        data: None,
+    })
+}
+
 fn is_admin<S: Storage>(config: &Config<S>, account: &HumanAddr) -> StdResult<bool> {
     let consts = config.constants()?;
     if &consts.admin != account {
@@ -1748,6 +1908,9 @@ mod tests {
     use cosmwasm_std::{from_binary, BlockInfo, ContractInfo, MessageInfo, QueryResponse, WasmMsg};
     use std::any::Any;
 
+    // ftoken additions:
+    use fsnft_utils::FtokenContrInit;
+
     // Helper functions
 
     fn init_helper(
@@ -1760,6 +1923,7 @@ mod tests {
         let env = mock_env("instantiator", &[]);
 
         let init_msg = InitMsg {
+            init_info: FtokenContrInit::default(),
             name: "sec-sec".to_string(),
             admin: Some(HumanAddr("admin".to_string())),
             symbol: "SECSEC".to_string(),
@@ -1805,6 +1969,7 @@ mod tests {
         ))
         .unwrap();
         let init_msg = InitMsg {
+            init_info: FtokenContrInit::default(),
             name: "sec-sec".to_string(),
             admin: Some(HumanAddr("admin".to_string())),
             symbol: "SECSEC".to_string(),
@@ -1897,7 +2062,8 @@ mod tests {
             address: HumanAddr("lebron".to_string()),
             amount: Uint128(5000),
         }]);
-        assert_eq!(init_result.unwrap(), InitResponse::default());
+        // assert_eq!(init_result.unwrap(), InitResponse::default());
+        assert!(init_result.is_ok());
 
         let config = ReadonlyConfig::from_storage(&deps.storage);
         let constants = config.constants().unwrap();
@@ -1927,7 +2093,8 @@ mod tests {
             true,
             0,
         );
-        assert_eq!(init_result.unwrap(), InitResponse::default());
+        // assert_eq!(init_result.unwrap(), InitResponse::default());
+        assert!(init_result.is_ok());
 
         let config = ReadonlyConfig::from_storage(&deps.storage);
         let constants = config.constants().unwrap();
@@ -3666,6 +3833,7 @@ mod tests {
         let mut deps = mock_dependencies(20, &[]);
         let env = mock_env("instantiator", &[]);
         let init_msg = InitMsg {
+            init_info: FtokenContrInit::default(),
             name: init_name.clone(),
             admin: Some(init_admin.clone()),
             symbol: init_symbol.clone(),
@@ -3732,6 +3900,7 @@ mod tests {
         let mut deps = mock_dependencies(20, &[]);
         let env = mock_env("instantiator", &[]);
         let init_msg = InitMsg {
+            init_info: FtokenContrInit::default(),
             name: init_name.clone(),
             admin: Some(init_admin.clone()),
             symbol: init_symbol.clone(),
@@ -3801,6 +3970,7 @@ mod tests {
         ))
         .unwrap();
         let init_msg = InitMsg {
+            init_info: FtokenContrInit::default(),
             name: init_name.clone(),
             admin: Some(init_admin.clone()),
             symbol: init_symbol.clone(),
@@ -3858,6 +4028,7 @@ mod tests {
         ))
         .unwrap();
         let init_msg = InitMsg {
+            init_info: FtokenContrInit::default(),
             name: init_name.clone(),
             admin: Some(init_admin.clone()),
             symbol: init_symbol.clone(),
@@ -3915,6 +4086,7 @@ mod tests {
         ))
         .unwrap();
         let init_msg = InitMsg {
+            init_info: FtokenContrInit::default(),
             name: init_name.clone(),
             admin: Some(init_admin.clone()),
             symbol: init_symbol.clone(),
@@ -3960,6 +4132,7 @@ mod tests {
         let mut deps = mock_dependencies(20, &[]);
         let env = mock_env("instantiator", &[]);
         let init_msg = InitMsg {
+            init_info: FtokenContrInit::default(),
             name: init_name.clone(),
             admin: Some(init_admin.clone()),
             symbol: init_symbol.clone(),
