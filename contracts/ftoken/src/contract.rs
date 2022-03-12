@@ -139,7 +139,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 
     write_ftkn_info(&mut deps.storage, &val)?;
 
-    // set viewing key. Alternatively use query permits, but possible that some older NFTs may not implement query permits
+    // ftoken addition: set viewing key. Alternatively use query permits, but some older NFTs may not implement query permits
     let vk = ViewingKey::new(&env, &prng_seed_hashed, &deps.api.canonical_address(&env.contract.address)?.as_slice());
     write_nft_vk(&mut deps.storage, &vk)?;
     let set_vk_msg = InitRes::SetViewingKey { key: vk.to_string(), padding: None };
@@ -335,6 +335,9 @@ fn debug_query<S: Storage, A: Api, Q: Querier>(
         nftviewingkey,
     };
     to_binary(&(resp))
+
+    // final implementation can use below response
+    // to_binary("not available")
 }
 
 

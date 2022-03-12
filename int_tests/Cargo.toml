@@ -1,0 +1,18 @@
+[package]
+name = "int_tests"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+snafu = { version = "0.6.3" }
+serde = { version = "1.0.103", default-features = false, features = ["derive"] }
+schemars = "0.7"
+cosmwasm-std = { version = "0.10", package = "secret-cosmwasm-std" }
+cosmwasm-storage = { version = "0.10", package = "secret-cosmwasm-storage" }
+secret-toolkit = "0.2.0" # Uncomment this for extra tools
+
+fractionalizer = { path = "../contracts/fractionalizer" }
+ftoken = { path = "../contracts/ftoken" }
+fsnft_utils = { path = "../fsnft_utils" }

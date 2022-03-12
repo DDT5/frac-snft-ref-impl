@@ -2,14 +2,13 @@ use std::any::type_name;
 
 use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use cosmwasm_std::{HumanAddr, Uint128, Storage, ReadonlyStorage, StdResult, StdError};
+use cosmwasm_std::{HumanAddr, Uint128, Storage, ReadonlyStorage, StdResult, StdError, testing::mock_env, Env};
 
 use secret_toolkit::{
     serialization::{Json, Serde}, 
     utils::Query, 
     snip721::ViewerInfo, 
 };
-
 
 /////////////////////////////////////////////////////////////////////////////////
 // Structs for msgs between fractionalizer and ftoken contracts
@@ -171,4 +170,28 @@ pub fn json_may_load<T: DeserializeOwned, S: ReadonlyStorage>(
 /// * `key` - a byte slice representing the key that accesses the stored item
 pub fn json_remove<S: Storage>(storage: &mut S, key: &[u8]) {
     storage.remove(key);
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////
+// multi unit test helpers
+/////////////////////////////////////////////////////////////////////////////////
+
+/// Serialized then deserializes a struct into / from json. Simulates a cosmos message being 
+/// sent between contracts. Used for unit tests 
+pub fn json_ser_deser<T: Serialize, U: DeserializeOwned>(value: &T) -> StdResult<U> {
+    let ser = Json::serialize(value)?;
+    let deser: U = Json::deserialize(&ser)?;
+    Ok(deser)
+}
+
+pub fn more_mock_env(
+    sender: HumanAddr,
+    contract_addr: Option<HumanAddr>,
+    contract_code_hash: Option<String>,
+) -> Env {
+    let mut env = mock_env(sender, &[]);
+    if let Some(i) = contract_addr { env.contract.address = i }
+    if let Some(i) = contract_code_hash { env.contract_code_hash = i }
+    env
 }

@@ -6,4 +6,7 @@ members = [
   
   # packages
   "fsnft_utils",
+
+  # tests
+  "int_tests",
 ]

@@ -462,7 +462,7 @@ function doInit() {
 
     # instantiate SNIP721 contract
     init_msg='{"name":"myNFT","symbol":"NFT","entropy":"foo bar","config":{"public_token_supply":true,"public_owner":true,"enable_sealed_metadata":true,"unwrapped_metadata_is_private":true,"minter_may_update_metadata":true,"owner_may_update_metadata":true,"enable_burn":true}}'
-    snip721="$(create_contract './fsnft_utils/tests/snip721' "snip721contract" "$init_msg")"
+    snip721="$(create_contract './tests/snip721' "snip721contract" "$init_msg")"
     snip721_h="$(secretcli q compute contract-hash "$snip721" | sed 's/^0x//')"
 
 

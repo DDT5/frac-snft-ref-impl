@@ -2,7 +2,7 @@ use std::ops::Add;
 
 use cosmwasm_std::{
     debug_print, to_binary, Api, Binary, Env, Extern, HandleResponse, InitResponse, Querier, from_binary,
-    CosmosMsg, WasmMsg, log, Uint128,
+    CosmosMsg, WasmMsg, log, // Uint128,
     StdResult, StdError, Storage, HumanAddr,  
 };
 use secret_toolkit::utils::{HandleCallback, InitCallback}; //pad_handle_result, pad_query_result,   
@@ -269,9 +269,7 @@ fn send_nft_msg<S: Storage, A: Api, Q: Querier>(
 fn instantiate_ftoken_contr_msg<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    name: String,
-    symbol: String,
-    decimals: u8,
+    ftkn_conf: FtokenConf,
     callback_code_hash: String,
     nft_info: UndrNftInfo,
 ) -> StdResult<CosmosMsg> {
@@ -281,7 +279,7 @@ fn instantiate_ftoken_contr_msg<S: Storage, A: Api, Q: Querier>(
     // create cosmos message
     let init_balance = vec![InitialBalance {
         address: env.message.sender.clone(),  
-        amount: Uint128(1_000_000),
+        amount: ftkn_conf.supply,
     }];
     // optionally use Secret Orcale RNG (scrt-rng) for higher security
     let prng_seed = to_binary("prngseed")?;
@@ -296,10 +294,10 @@ fn instantiate_ftoken_contr_msg<S: Storage, A: Api, Q: Querier>(
             fract_hash: env.contract_code_hash,
             nft_info,
         },
-        name,
+        name: ftkn_conf.name,
         admin: None,
-        symbol,
-        decimals,
+        symbol: ftkn_conf.symbol,
+        decimals: ftkn_conf.decimals,
         initial_balances: Some(init_balance),
         prng_seed,
         config: None,
@@ -344,7 +342,7 @@ pub fn try_receive_ftoken_callback<S: Storage, A: Api, Q: Querier>(
 
     // `send` NFT from user to ftoken contract
     // does not check if user has given permission to transfer token, because ftoken contract will 
-    // perform this check and throw an error if it does not receive the nft  (todo)
+    // perform this check and throw an error if it does not receive the nft
     
     let msg = Some(to_binary(&ftoken_contr.nft_info)?);
 
@@ -396,9 +394,7 @@ pub fn try_fractionalize<S: Storage, A: Api, Q: Querier>(
     let ftoken_init_msg = instantiate_ftoken_contr_msg(
         deps, 
         env, 
-        ftkn_conf.name, 
-        ftkn_conf.symbol, 
-        ftkn_conf.decimals, 
+        ftkn_conf,
         ftkn_code_hash,
         nft_info,
     )?;

@@ -18,7 +18,7 @@ use fsnft_utils::{FtokenContrInit, FtokenInfo, ContractInfo, UndrNftInfo};
 use secret_toolkit::utils::{HandleCallback}; 
 use crate::contract::{RESPONSE_BLOCK_SIZE};
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InitialBalance {
     pub address: HumanAddr,
     pub amount: Uint128,

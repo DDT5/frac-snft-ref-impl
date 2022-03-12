@@ -4,6 +4,29 @@ Fractionalized Secret NFT ("frac-sNFT") Standard Specifications and Reference Im
 
 _This document and repository is work in progress._
 
+## Workspace organization <!-- omit in toc --> 
+
+This workspace consists of the following contracts:
+* Fractionalizer: this is the main contract. It handles the fractionalization logic, DAO, treasury, bidding process, and other user interactions. 
+* ftoken: this is a SNIP20-compliant contract that mints and manages the tokens that represent fractional ownership of the underlying NFT. Also handles interactions with the underlying NFT  
+
+It also has the following:
+* fsnft_utils: a library of useful structs, enums and functions that are used across multiple contracts
+* int_tests: multi-contract unit tests and integration tests
+
+
+```
+Key items in workspace
+
+workspace
+├── contracts
+│   ├── fractionalizer
+│   └── ftoken
+├── fsnft_utils
+└── integration_tests
+    └── tests
+```
+
 ## Table of contents <!-- omit in toc --> 
 - [Introduction](#introduction)
   - [Abstract](#abstract)
@@ -55,7 +78,7 @@ This memo uses terms defined below:
 * **ftokens** ("fractional tokens") are [SNIP20](https://github.com/SecretFoundation/SNIPs/blob/master/SNIP-20.md)-compliant (fungible) tokens that represent fractional ownership of an underlying NFT
 * **Vault** is the NFT inventory of the frac-sNFT contract 
 * **Underlying NFT** refers to a SNIP721 token that has been deposited into the vault
-* **Collection** refers to one or more deposited NFTs that share similar ftokens. For the base specification, a collection simply refers to a unique underlying NFT (terminology can be used interchangeably in this case) 
+* **Collection (TERM TO BE CHANGED SO WON'T BE CONFUSED WITH `COLLECTION` AS DEFINED BY SNIP721)** refers to one or more deposited NFTs that share similar ftokens. For the base specification, a collection simply refers to a unique underlying NFT (terminology can be used interchangeably in this case) 
 * **NFT depositor** is the user which deposited the underlying NFT into the vault
 * **Fractionalized state** refers to the state the underlying NFT is while locked in the vault
 * **User** refers to any Secret Network address that interacts with the frac-sNFT contract(s), which can be either a smart contract address or an address controlled by a person 
@@ -77,7 +100,7 @@ The contract allows an existing owner of a [SNIP721](https://github.com/SecretFo
 The frac-sNFT contract MUST implement a [SNIP721 receiver interface](https://github.com/baedrik/snip721-reference-impl/blob/master/README.md#receiver).
 
 The vault MUST accept SNIP721 tokens if the following conditions are met:
-* The NFT depositor is the current owner of the SNIP721 token
+* The frac-sNFT contract has been given permission to transfer the SNIP721 token (note: this is granted by the owner of the NFT)
 * While the NFT is in the vault, no address other than the frac-sNFT contract is able to send messages to the underlying NFT, with the exception of the minter being able to change the metadata if that is how the underlying NFT is configured
 
 Once the user deposits a token into the vault, the token MUST be kept in the contract's inventory for as long as the NFT remains in a fractionalized state. The underlying NFT MUST NOT be transferrable out of the vault (eg: by an address with transfer permissions), other than through a [bidding](#bidding) process. The underlying SNIP721 token MUST have the following configurations when it is held in the vault.
@@ -88,7 +111,7 @@ Once the user deposits a token into the vault, the token MUST be kept in the con
 }
 ```
 
-The contract MUST mint ftokens. All minted ftokens SHOULD be initially transferred to the owner of the underlying NFT and received on the same transaction as the NFT deposit transaction.
+The contract MUST mint ftokens. All minted ftokens SHOULD be initially transferred to the NFT depositor of the underlying NFT and received on the same transaction as the NFT deposit transaction.
 
 ftokens MUST be SNIP20-compliant (hence fungible), and MUST be unique for each collection. ftokens MAY be traded freely between multiple Secret addresses. 
 
