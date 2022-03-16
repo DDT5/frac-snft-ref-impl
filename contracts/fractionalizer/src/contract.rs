@@ -2,25 +2,30 @@ use std::ops::Add;
 
 use cosmwasm_std::{
     debug_print, to_binary, Api, Binary, Env, Extern, HandleResponse, InitResponse, Querier, from_binary,
-    CosmosMsg, WasmMsg, log, // Uint128,
-    StdResult, StdError, Storage, HumanAddr,  
+    CosmosMsg, WasmMsg, log, 
+    StdResult, StdError, Storage, HumanAddr,
 };
-use secret_toolkit::utils::{HandleCallback, InitCallback}; //pad_handle_result, pad_query_result,   
+use secret_toolkit::{
+    utils::{InitCallback, HandleCallback},  //pad_handle_result, pad_query_result,}
+}; 
+
 // use secret_toolkit::serialization::{Bincode2, Serde};
 
-use crate::msg::{
-    InitMsg, HandleMsg, InitFtoken, InterContrMsg, QueryMsg, CountResponse,
-    InitialBalance,
+use crate::{
+    msg::{
+        InitMsg, HandleMsg, InitFtoken, QueryMsg, CountResponse,
+        InitialBalance,
+    },
+    state::{
+        Config, config_w, config_r,
+        ftkn_idx_w, ftkn_idx_r, ftoken_contr_w, pending_reg_w, pending_reg_r, ftkn_id_hash_w, ftkn_id_hash_r,
+    },
 };
-use crate::state::{
-    ftkn_idx_w, ftkn_idx_r, ftoken_contr_w, pending_reg_w, pending_reg_r, ftkn_id_hash_w, ftkn_id_hash_r,
-};
 
-use fsnft_utils::{FtokenConf, FtokenContrInit, FtokenInfo, UndrNftInfo};
+use fsnft_utils::{FtokenConf, FtokenContrInit, FtokenInfo, UndrNftInfo, InterContrMsg, send_nft_msg};
 
-use crate::state::{Config, config_w, config_r};
+pub const RESPONSE_BLOCK_SIZE: usize = 256;
 
-pub const BLOCK_SIZE: usize = 256;
 
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -32,10 +37,14 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     _env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
-    config_w(&mut deps.storage).save(&Config {known_snip_721: vec![]})?;
+    config_w(&mut deps.storage).save(&Config {
+        known_snip_721: vec![],
+    })?;
     ftkn_idx_w(&mut deps.storage).save(&0u32)?;
     ftkn_id_hash_w(&mut deps.storage).save(&msg.uploaded_ftoken)?;
 
+
+    
     Ok(InitResponse::default())
 }
 
@@ -50,15 +59,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        // HandleMsg::RegisterNftContr { 
-        //     reg_hash ,
-        //     reg_addr, 
-        // } => try_register_nft_contr(
-        //     deps,
-        //     env,
-        //     reg_hash,
-        //     reg_addr, 
-        // ),
         HandleMsg::BatchReceiveNft { 
             sender, 
             from, 
@@ -85,41 +85,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             recipient,
             token_id,
         ),
-        // HandleMsg::SendNft {
-        //     nft_contr_addr,
-        //     nft_contr_hash,
-        //     contract,
-        //     token_id,
-        //     msg,
-        // } => try_send_nft(
-        //     deps,
-        //     env,
-        //     nft_contr_addr,
-        //     nft_contr_hash,
-        //     contract,
-        //     token_id,
-        //     msg,
-        // ),
-        // HandleMsg::InstantiateFtoken {
-        //     name,
-        //     symbol,
-        //     decimals,
-        //     callback_code_hash
-        // } => try_instantiate_ftoken_contr(
-        //     deps,
-        //     env,
-        //     name,
-        //     symbol,
-        //     decimals,
-        //     callback_code_hash,
-        // ),
-        HandleMsg::ReceiveFtokenCallback {
-            ftoken_contr,
-        } => try_receive_ftoken_callback(
-            deps,
-            env,
-            ftoken_contr,
-        ),
         HandleMsg::Fractionalize {
             nft_info,
             ftkn_conf,
@@ -129,10 +94,19 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             nft_info, 
             ftkn_conf,
         ),
+        HandleMsg::ReceiveFtokenCallback {
+            ftoken_contr,
+        } => try_receive_ftoken_callback(
+            deps,
+            env,
+            ftoken_contr,
+        ),
     }
 }
 
 /// internal function to register with the SNIP721 contract
+/// * `reg_hash` - The SNIP721 contract code hash
+/// * `reg_addr` - The SNIP721 contract address to register with
 fn register_nft_contr_msg<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: &Env,
@@ -223,44 +197,6 @@ pub fn try_transfer_nft<S: Storage, A: Api, Q: Querier>(
     // Ok(HandleResponse::default())
 }
 
-/// Creates a `SendNft` cosmos msg to be sent to NFT contract 
-/// * `deps` - mutable reference to Extern containing all the contract's external dependencies
-/// * `env` - Env of contract's environment
-/// * `contract` - HumanAddr (String) of receiver of nft, ie: ftoken contract address
-fn send_nft_msg<S: Storage, A: Api, Q: Querier>(
-    _deps: &mut Extern<S, A, Q>,
-    _env: Env,
-    nft_contr_addr: HumanAddr,
-    nft_contr_hash: String,
-    contract: HumanAddr,
-    token_id: String,
-    msg: Option<Binary>,
-) -> StdResult<CosmosMsg> {
-
-    let contract_msg = InterContrMsg::SendNft {
-            // address of recipient of nft
-            contract, 
-            token_id,
-            msg,
-        };
-
-    let cosmos_msg = contract_msg.to_cosmos_msg(
-        nft_contr_hash, 
-        HumanAddr(nft_contr_addr.to_string()), 
-        None
-    )?;
-
-    Ok(cosmos_msg)
-
-    // // create messages
-    // let messages = vec![cosmos_msg];
-
-    // Ok(HandleResponse {
-    //     messages,
-    //     log: vec![],
-    //     data: None
-    // })
-}
 
 /// Generates cosmos message to instantitate a new ftoken contract
 /// * `deps` - mutable reference to Extern containing all the contract's external dependencies
@@ -282,17 +218,18 @@ fn instantiate_ftoken_contr_msg<S: Storage, A: Api, Q: Querier>(
         amount: ftkn_conf.supply,
     }];
     // optionally use Secret Orcale RNG (scrt-rng) for higher security
-    let prng_seed = to_binary("prngseed")?;
-    let idx = ftkn_idx_r(&deps.storage).load()?;
+    let prng_seed = to_binary(&env.message)?;
+    let ftkn_idx = ftkn_idx_r(&deps.storage).load()?;
     // add one to idx
-    ftkn_idx_w(&mut deps.storage).save(&idx.add(1))?;
+    ftkn_idx_w(&mut deps.storage).save(&ftkn_idx.add(1))?;
 
     let contract_msg = InitFtoken {
         init_info: FtokenContrInit {
-            idx,
+            ftkn_idx,
             depositor: env.message.sender,
             fract_hash: env.contract_code_hash,
             nft_info,
+            bid_token: ftkn_conf.bid_token,
         },
         name: ftkn_conf.name,
         admin: None,
@@ -337,8 +274,8 @@ pub fn try_receive_ftoken_callback<S: Storage, A: Api, Q: Querier>(
     pending_reg_w(&mut deps.storage).remove(); 
 
     // save ftoken contract info
-    let idx = ftoken_contr.idx;
-    ftoken_contr_w(&mut deps.storage).save(&idx.to_le_bytes(), &ftoken_contr)?;
+    let ftkn_idx = ftoken_contr.ftkn_idx;
+    ftoken_contr_w(&mut deps.storage).save(&ftkn_idx.to_le_bytes(), &ftoken_contr)?;
 
     // `send` NFT from user to ftoken contract
     // does not check if user has given permission to transfer token, because ftoken contract will 

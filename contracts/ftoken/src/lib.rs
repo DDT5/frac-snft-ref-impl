@@ -7,6 +7,7 @@ pub mod state;
 mod transaction_history;
 mod utils;
 mod viewing_key;
+pub mod ftoken_mod;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm {

@@ -1,11 +1,17 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Binary, HumanAddr, Uint128};
-use secret_toolkit::utils::{InitCallback, HandleCallback};  
+use secret_toolkit::{
+    utils::{InitCallback,},
+    
+};  
 
-use crate::{contract::{BLOCK_SIZE}, state::UploadedFtkn};
+use crate::{
+    contract::{RESPONSE_BLOCK_SIZE}, 
+    state::UploadedFtkn,
+};
 
-use fsnft_utils::{FtokenContrInit, FtokenInfo, FtokenConf, UndrNftInfo};
+use fsnft_utils::{FtokenContrInit, FtokenInfo, FtokenConf, UndrNftInfo, ContractInfo};
 
 /////////////////////////////////////////////////////////////////////////////////
 // Init message
@@ -14,6 +20,7 @@ use fsnft_utils::{FtokenContrInit, FtokenInfo, FtokenConf, UndrNftInfo};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
     pub uploaded_ftoken: UploadedFtkn,
+    pub bid_token: ContractInfo,
 }
 
 
@@ -24,13 +31,6 @@ pub struct InitMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
-    /// Function for users to call. When called, fsnft contract will register with SNIP721 contract
-    // RegisterNftContr {
-    //     /// The SNIP721 contract code hash
-    //     reg_hash: String,
-    //     /// The SNIP721 contract address to register with
-    //     reg_addr: HumanAddr,
-    // },
     /// Receiver interface function for SNIP721 contract. Msg to be received from SNIP721 contract
     /// BatchReceiveNft may be a HandleMsg variant of any contract that wants to implement a receiver
     /// interface.  BatchReceiveNft, which is more informative and more efficient, is preferred over
@@ -52,22 +52,6 @@ pub enum HandleMsg {
         recipient: HumanAddr,
         token_id: String
     },
-    /// `send` an NFT that this contract has permission to transfer
-    // SendNft {
-    //     nft_contr_addr: HumanAddr,
-    //     nft_contr_hash: String,
-    //     /// address to send the token to
-    //     contract: HumanAddr,
-    //     token_id: String,
-    //     msg: Option<Binary>,
-    // },
-    /// Msg sent by user to instantiate ftoken contract
-    // InstantiateFtoken {
-    //     name: String,
-    //     symbol: String,
-    //     decimals: u8,
-    //     callback_code_hash: String,
-    // },
     /// Receiver for InitResponse callback from ftoken contract  
     ReceiveFtokenCallback {
         ftoken_contr: FtokenInfo,
@@ -136,54 +120,9 @@ pub struct InitFtoken {
 }
 
 impl InitCallback for InitFtoken {
-    const BLOCK_SIZE: usize = BLOCK_SIZE;
+    const BLOCK_SIZE: usize = RESPONSE_BLOCK_SIZE;
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum InterContrMsg{
-    /// Receiver interface function for SNIP721 contract. Msg to be sent to SNIP721 contract
-    /// register that the message sending contract implements ReceiveNft and possibly
-    /// BatchReceiveNft.  If a contract implements BatchReceiveNft, SendNft will always
-    /// call BatchReceiveNft even if there is only one token transferred (the token_ids
-    /// Vec will only contain one ID)
-    RegisterReceiveNft {
-        /// receving contract's code hash
-        code_hash: String,
-        /// optionally true if the contract also implements BatchReceiveNft.  Defaults
-        /// to false if not specified
-        also_implements_batch_receive_nft: Option<bool>,
-        /// optional message length padding
-        padding: Option<String>,
-    },
-    /// Message to send to SNIP721 contract
-    TransferNft {
-        recipient: HumanAddr, 
-        token_id: String,
-    },
-    /// Message to send to SNIP721 contract
-    SendNft {
-        /// address to send the token to
-        contract: HumanAddr,
-        token_id: String,
-        /// optional message to send with the (Batch)RecieveNft callback
-        msg: Option<Binary>,
-    },
-}
-
-impl InterContrMsg {
-    pub fn register_receive(code_hash: &String) -> Self {
-        InterContrMsg::RegisterReceiveNft {
-            code_hash: code_hash.to_string(),
-            also_implements_batch_receive_nft: Some(true), 
-            padding: None, // TODO add padding calculation
-        }
-    }
-}
-
-impl HandleCallback for InterContrMsg {
-    const BLOCK_SIZE: usize = BLOCK_SIZE;
-}
 
 /////////////////////////////////////////////////////////////////////////////////
 // Query messages

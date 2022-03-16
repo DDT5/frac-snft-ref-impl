@@ -2,9 +2,7 @@ use std::any::type_name;
 use std::convert::TryFrom;
 
 use cosmwasm_std::{
-    CanonicalAddr, HumanAddr, ReadonlyStorage, StdError, StdResult, Storage,
-    // ftoken additions:
-    
+    CanonicalAddr, HumanAddr, ReadonlyStorage, StdError, StdResult, Storage,    
 };
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 
@@ -16,10 +14,6 @@ use serde::{Deserialize, Serialize};
 use crate::msg::{status_level_to_u8, u8_to_status_level, ContractStatusLevel};
 use crate::viewing_key::ViewingKey;
 use serde::de::DeserializeOwned;
-
-// ftoken addition:
-use fsnft_utils::{UndrNftInfo, json_save, json_load, FtokenInfo};
-
 
 pub static CONFIG_KEY: &[u8] = b"config";
 pub const PREFIX_TXS: &[u8] = b"transfers";
@@ -35,11 +29,6 @@ pub const PREFIX_BALANCES: &[u8] = b"balances";
 pub const PREFIX_ALLOWANCES: &[u8] = b"allowances";
 pub const PREFIX_VIEW_KEY: &[u8] = b"viewingkey";
 pub const PREFIX_RECEIVERS: &[u8] = b"receivers";
-
-// ftoken addition:
-pub const FTOKEN_INFO: &[u8] = b"ftokeninfo";
-pub const PREFIX_UNDR_NFT: &[u8] = b"undrlynft";
-pub const NFT_VIEW_KEY: &[u8] = b"nftviewkey";
 
 
 // Config
@@ -101,11 +90,11 @@ impl<'a, S: ReadonlyStorage> ReadonlyConfig<'a, S> {
     }
 }
 
-fn ser_bin_data<T: Serialize>(obj: &T) -> StdResult<Vec<u8>> {
+pub(crate) fn ser_bin_data<T: Serialize>(obj: &T) -> StdResult<Vec<u8>> {
     bincode2::serialize(&obj).map_err(|e| StdError::serialize_err(type_name::<T>(), e))
 }
 
-fn deser_bin_data<T: DeserializeOwned>(data: &[u8]) -> StdResult<T> {
+pub(crate) fn deser_bin_data<T: DeserializeOwned>(data: &[u8]) -> StdResult<T> {
     bincode2::deserialize::<T>(&data).map_err(|e| StdError::serialize_err(type_name::<T>(), e))
 }
 
@@ -381,41 +370,6 @@ pub fn get_receiver_hash<S: ReadonlyStorage>(
 pub fn set_receiver_hash<S: Storage>(store: &mut S, account: &HumanAddr, code_hash: String) {
     let mut store = PrefixedStorage::new(PREFIX_RECEIVERS, store);
     store.set(account.as_str().as_bytes(), code_hash.as_bytes());
-}
-
-// ftoken additions:
-
-/// stores ftoken information
-pub fn write_ftkn_info<S: Storage>(store: &mut S, val: &FtokenInfo) -> StdResult<()> {
-    json_save(store, FTOKEN_INFO, val)
-}
-
-pub fn read_ftkn_info<S: Storage>(store: &S) -> StdResult<FtokenInfo> {
-    json_load(store, FTOKEN_INFO)
-}
-
-/// stores viewing key to query nft contract
-pub fn write_nft_vk<S: Storage>(store: &mut S, val: &ViewingKey) -> StdResult<()> {
-    json_save(store, NFT_VIEW_KEY, val)
-}
-
-pub fn read_nft_vk<S: Storage>(store: &S) -> StdResult<ViewingKey> {
-    json_load(store, NFT_VIEW_KEY)
-}
-
-/// logs whether underlying nft is in the vault
-pub fn write_nft_in_vault<S: Storage>(store: &mut S, key: &UndrNftInfo, val: &bool) {
-    let mut store = PrefixedStorage::new(PREFIX_UNDR_NFT, store);
-    let ser_key = &ser_bin_data(key).unwrap();
-    let ser_val = &ser_bin_data(val).unwrap();
-    store.set(ser_key, ser_val);
-}
-
-pub fn read_nft_in_vault<S: Storage>(store: &S, key: &UndrNftInfo) -> bool {
-    let store = ReadonlyPrefixedStorage::new(PREFIX_UNDR_NFT, store);
-    let ser_key = &ser_bin_data(key).unwrap();
-    let ser_val = store.get(ser_key).unwrap();
-    deser_bin_data(&ser_val).unwrap()
 }
 
 

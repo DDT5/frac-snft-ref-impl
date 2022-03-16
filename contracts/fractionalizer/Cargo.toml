@@ -40,6 +40,14 @@ schemars = "0.7"
 cosmwasm-std = { version = "0.10", package = "secret-cosmwasm-std" }
 cosmwasm-storage = { version = "0.10", package = "secret-cosmwasm-storage" }
 secret-toolkit = "0.2.0" # Uncomment this for extra tools
+#secret-toolkit = {git = "https://github.com/scrtlabs/secret-toolkit", rev = "4c9ece9"} # VK package still does not work
+
+# for viewing key files rand.rs, utils.rs and viewing_key.rs. Can remove once secret-toolkit is fixed
+#subtle = { version = "2.2.3", default-features = false }
+#base64 = "0.12.3"
+#rand_chacha = { version = "0.2.2", default-features = false }
+#rand_core = { version = "0.5.1", default-features = false }
+#sha2 = { version = "0.9.1", default-features = false }
 
 fsnft_utils = { path = "../../fsnft_utils" }
 

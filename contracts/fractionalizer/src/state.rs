@@ -8,13 +8,13 @@ use cosmwasm_storage::{
     singleton, singleton_read, ReadonlySingleton, Singleton,
 };
 
-use fsnft_utils::{FtokenInfo,};
+use fsnft_utils::{FtokenInfo};
 
-pub const FTOKEN_CONTR: &[u8] = b"ftkncontr";
 pub const CONFIG_KEY: &[u8] = b"config";
 pub const PENDING_REG: &[u8] = b"pendreg";
 pub const FTKN_INDEX: &[u8] = b"ftknidx";
 pub const UPLOADED_FTKN: &[u8] = b"uploadftkn";
+pub const FTOKEN_CONTR_FRAC: &[u8] = b"ftkncontr_frac";
 
 
 
@@ -25,21 +25,11 @@ pub const UPLOADED_FTKN: &[u8] = b"uploadftkn";
 /// FtokenContr storage: stores information on the ftokens that fractionalizer contract
 /// has created
 pub fn ftoken_contr_w<S: Storage>(storage: &mut S) -> Bucket<S, FtokenInfo> {
-    bucket(FTOKEN_CONTR, storage)
+    bucket(FTOKEN_CONTR_FRAC, storage)
 }
 pub fn ftoken_contr_r<S: Storage>(storage: &S) -> ReadonlyBucket<S, FtokenInfo> {
-    bucket_read(FTOKEN_CONTR, storage)
+    bucket_read(FTOKEN_CONTR_FRAC, storage)
 }
-
-
-
-// pub fn multilevel_bucket<S: Storage>(
-//     storage: &mut S,
-//     id: u8
-// ) -> Bucket<S, String> {
-//     let bucket: Bucket<_,String> = Bucket::multilevel(&[FTOKEN_CONTR, &id.to_le_bytes()], storage);
-//     bucket
-// }
 
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -77,6 +67,7 @@ pub fn ftkn_id_hash_w<S: Storage>(storage: &mut S) -> Singleton<S, UploadedFtkn>
 pub fn ftkn_id_hash_r<S: Storage>(storage: &S) -> ReadonlySingleton<S, UploadedFtkn> {
     singleton_read(storage, UPLOADED_FTKN)
 }
+
 
 /////////////////////////////////////////////////////////////////////////////////
 // Structs

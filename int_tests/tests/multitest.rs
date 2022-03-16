@@ -2,7 +2,7 @@
 use std::any::Any;
 use fractionalizer::{
     contract::{init, handle}, 
-    msg::{InitMsg, HandleMsg, InterContrMsg, InitFtoken, InitialBalance}, 
+    msg::{InitMsg, HandleMsg, InitFtoken, InitialBalance}, 
     state::{
         config_r, ftkn_idx_r, ftkn_id_hash_r,
         UploadedFtkn, Config
@@ -15,7 +15,10 @@ use ftoken::{
     msg::{
         InitMsg as FtInitMsg, InitialBalance as FtInitialBalance, InitConfig as FtInitConfig,
     }, 
-    state::{ReadonlyBalances, read_ftkn_info},
+    state::{ReadonlyBalances,},
+    ftoken_mod::{
+        state::{ftoken_contr_s_r},
+    }
 };
 
 use cosmwasm_std::{
@@ -24,7 +27,7 @@ use cosmwasm_std::{
 };
 
 use cosmwasm_std::testing::{mock_dependencies, mock_env, MockStorage, MockApi, MockQuerier};
-use fsnft_utils::{UndrNftInfo, ContractInfo, FtokenConf, FtokenContrInit, json_ser_deser, FtokenInfo, more_mock_env};
+use fsnft_utils::{UndrNftInfo, ContractInfo, FtokenConf, FtokenContrInit, json_ser_deser, FtokenInfo, extract_cosmos_msg, InterContrMsg}; // more_mock_env
 use secret_toolkit::utils::{InitCallback, HandleCallback};
 
 
@@ -41,6 +44,7 @@ fn frac_init_helper_default() -> (
 
     let init_msg = InitMsg {
         uploaded_ftoken: UploadedFtkn::default(),
+        bid_token: ContractInfo::default(),
     };
 
     (init(&mut deps, env, init_msg), deps)
@@ -134,6 +138,10 @@ fn test_fractionalize_integration() {
             symbol: "TKN".to_string(),
             supply,
             decimals: 6u8,
+            bid_token: ContractInfo {
+                code_hash: "SSCRT_hash".to_string(),
+                address: HumanAddr("SSCRT_addr".to_string()),
+            },
         },
     };
     let env = mock_env("NFTdepositor", &[]);
@@ -156,10 +164,14 @@ fn test_fractionalize_integration() {
     // messages[1] is..
     let exp_msg1 = InitFtoken {
         init_info: FtokenContrInit {
-            idx: 0u32,
+            ftkn_idx: 0u32,
             depositor: nft_depositor_addr.clone(),
             fract_hash: env.contract_code_hash.clone(),
             nft_info: nft_info.clone(),
+            bid_token: ContractInfo {
+                code_hash: "SSCRT_hash".to_string(),
+                address: HumanAddr("SSCRT_addr".to_string()),
+            },
         },
         name: "myftoken".to_string(),
         admin: None,
@@ -169,7 +181,7 @@ fn test_fractionalize_integration() {
             address: nft_depositor_addr.clone(),  
             amount: supply,
         }]),
-        prng_seed: to_binary("prngseed").unwrap(),
+        prng_seed: to_binary(&env.message).unwrap(),
         config: None,
     };
     let message1 = exp_msg1.to_cosmos_msg(
@@ -178,6 +190,7 @@ fn test_fractionalize_integration() {
         "".to_string(),
         None,
     ).unwrap();
+    
     assert_eq!(handle_resp.messages[1], message1);
 
     // SNIP721 successfully register received
@@ -210,9 +223,9 @@ fn test_fractionalize_integration() {
     assert_eq!(depositor_bal, supply);
 
     // check that ftokenInfo stored correctly in ftoken contract
-    let ft_ftkn_info = read_ftkn_info(&ft_deps.storage).unwrap();
+    let ft_ftkn_info = ftoken_contr_s_r(&ft_deps.storage).load().unwrap();
     let exp_ft_ftkn_info = FtokenInfo {
-        idx: 0u32,
+        ftkn_idx: 0u32,
         depositor: nft_depositor_addr.clone(),
         ftoken_contr: ContractInfo { 
             code_hash: ft_env.contract_code_hash, 
@@ -222,6 +235,7 @@ fn test_fractionalize_integration() {
         name: "myftoken".to_string(),
         symbol: "TKN".to_string(),
         decimals: 6u8,
+        in_vault: true,
     };
     assert_eq!(ft_ftkn_info, exp_ft_ftkn_info);
 
@@ -233,7 +247,7 @@ fn test_fractionalize_integration() {
     let handle_msg = HandleMsg::ReceiveFtokenCallback {
         ftoken_contr: exp_ft_ftkn_info.clone(),
     };
-    let ft_frc_env = more_mock_env(ft_env.contract.address.clone(), None, None);
+    let ft_frc_env = mock_env(ft_env.contract.address.clone(), &[]);
     let handle_result = handle(&mut deps, ft_frc_env, handle_msg);
     let handle_resp = handle_result.unwrap();
     // check there is one message in the response
@@ -256,4 +270,27 @@ fn test_fractionalize_integration() {
     // todo!()
 }
 
+#[test]
+fn test_decode() {
+    let env = mock_env("sender", &[]);
+    let msg0 = to_binary(&InterContrMsg::register_receive(&env.contract_code_hash)).unwrap();
+    let message0: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
+    contract_addr: HumanAddr("nft_addr".to_string()),
+    callback_code_hash: "nft_hash".to_string(),
+    msg: msg0,
+    send: vec![],
+});
 
+    let decoded0: InterContrMsg = extract_cosmos_msg(&message0).unwrap();
+    println!("The decoded CosmosMsg0 is: {:?}", decoded0);    
+
+    let msg1 = InterContrMsg::register_receive(&env.contract_code_hash);
+    let message1 = msg1.to_cosmos_msg(
+        "nft_hash".to_string(),
+        HumanAddr("nft_addr".to_string()),
+        None
+    );
+    // let decoded1: InterContrMsg = extract_cosmos_msg(&message1.unwrap()).unwrap();
+    println!("The decoded CosmosMsg1 is: {:?}", extract_cosmos_msg::<InterContrMsg>(&message1.unwrap()).unwrap());    
+
+}

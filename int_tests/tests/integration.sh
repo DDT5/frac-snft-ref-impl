@@ -449,22 +449,26 @@ function fundCD() {
 
 function doInit() {
     # upload ftoken (no instantiation)
-    # prng_seed="$(echo "foo bar" | base64)"
     # init_msg='{"name":"myftoken","symbol":"FTKN","decimals":6,"prng_seed":"'"$prng_seed"'","initial_balances":[{"address":"'"${ADDRESS[a]}"'","amount":"1000000"}]}'
     ftkn_code_id="$(upload_code '.' "ftoken")"
     # ftoken=
     ftoken_h="$(secretcli query compute list-code | jq -r '.[] | select(.id=='"$ftkn_code_id"') | .data_hash ')"
-    
-    # instantiate fract contract
-    init_msg='{"uploaded_ftoken":{"code_id":'$ftkn_code_id',"code_hash":"'"$ftoken_h"'"}}'
-    fract="$(create_contract '.' "fractionalizer" "$init_msg")"
-    fract_h="$(secretcli q compute contract-hash "$fract" | sed 's/^0x//')"
+
+    # instantiate SNIP20 ("sSCRT") contract
+    prng_seed="$(echo "foo bar" | base64)"
+    init_msg='{"name":"Secret SCRT","symbol":"SSCRT","decimals":6,"prng_seed":"'"$prng_seed"'","config":{"public_total_supply":true,"enable_deposit":true,"enable_redeem":true,"enable_mint":true,"enable_burn":true}}'
+    sscrt="$(create_contract './int_tests/tests/snip20' "snip20contract" "$init_msg")"
+    sscrt_h="$(secretcli q compute contract-hash "$sscrt" | sed 's/^0x//')"
 
     # instantiate SNIP721 contract
     init_msg='{"name":"myNFT","symbol":"NFT","entropy":"foo bar","config":{"public_token_supply":true,"public_owner":true,"enable_sealed_metadata":true,"unwrapped_metadata_is_private":true,"minter_may_update_metadata":true,"owner_may_update_metadata":true,"enable_burn":true}}'
-    snip721="$(create_contract './tests/snip721' "snip721contract" "$init_msg")"
+    snip721="$(create_contract './int_tests/tests/snip721' "snip721contract" "$init_msg")"
     snip721_h="$(secretcli q compute contract-hash "$snip721" | sed 's/^0x//')"
 
+    # instantiate fract contract
+    init_msg='{"uploaded_ftoken":{"code_id":'$ftkn_code_id',"code_hash":"'"$ftoken_h"'"},"bid_token":{"code_hash":"'"$sscrt_h"'","address":"'"$sscrt"'"}}'
+    fract="$(create_contract '.' "fractionalizer" "$init_msg")"
+    fract_h="$(secretcli q compute contract-hash "$fract" | sed 's/^0x//')"
 
 }
 
@@ -511,6 +515,7 @@ function doHandles() {
     # handle_w $fract '{"send_nft":{"nft_contr_addr":"'"$snip721"'","nft_contr_hash":"'"$snip721_h"'","contract":"'"$ftoken"'","token_id":"0","msg":"'"$msg"'"}}' a
     # # echo $resp | jq '.output_logs[0].attributes[] | select(.key=="msg") | .value' | base64 -d
 
+    supply=1000000
     msg='{"fractionalize":{
             "nft_info":{
                 "token_id":"0",
@@ -522,21 +527,33 @@ function doHandles() {
             "ftkn_conf":{
                 "name":"ftokencoin",
                 "symbol":"FTKN",
-                "supply":"1000000",
-                "decimals":6
+                "supply":"'"$supply"'",
+                "decimals":6,
+                "bid_token":{
+                    "code_hash":"'"$sscrt_h"'",
+                    "address":"'"$sscrt"'"
+                }
             }
         }
     }'
     msg="$(echo $msg | sed  's/ *//g')"
     handle_w "$fract" "$msg" a
-    ftoken0="$(secretcli query compute list-contract-by-code 1 | jq -r '.[0].address')"  # <-- note: ensure user is able to query the created ftoken contract address
-
-    # transfer some ftokens to address b
-    handle_w "$ftoken0" '{"transfer":{"recipient":"'"${ADDRESS[b]}"'","amount":"300000"}}' a
 }
 
-function ftokenHandles() {
-    handle_w "$ftoken0" '{"mint":{"recipient":"'"${ADDRESS[a]}"'","amount":"1000000"}}'
+function doFtokenHandles() {
+    ftoken0="$(secretcli query compute list-contract-by-code 1 | jq -r '.[0].address')"  # <-- note: ensure user is able to query the created ftoken contract address
+    # transfer some ftokens to address b
+    # handle_w "$ftoken0" '{"transfer":{"recipient":"'"${ADDRESS[b]}"'","amount":"300000"}}' a
+}
+
+function doChecks() {
+    # NFT is in ftoken contract
+    nft_owner="$(compute_query "$snip721" '{"owner_of":{"token_id":"0"}}' | jq -r '.owner_of.owner')"
+    assert_eq "$nft_owner" "$ftoken0"
+
+    # `a` owns $supply amount of ftoken  
+    bal="$(compute_query "$ftoken0" '{"balance":{"address":"'"${ADDRESS[a]}"'","key":"'"${VK_token[a]}"'"}}' | jq -r '.balance.amount')"
+    assert_eq "$bal" $supply
 }
 
 # ------------------------------------------------------------------------
@@ -583,6 +600,7 @@ function main() {
     create_vk_s721 "$snip721"; declare -g -A VK_nft=([a]="${VK[a]}" [b]="${VK[b]}" [c]="${VK[c]}" [d]="${VK[d]}")
     # makePermit $snip721 ${KEY[0]}
     doHandles
+    doFtokenHandles
     create_vk "$ftoken0"; declare -g -A VK_token=([a]="${VK[a]}" [b]="${VK[b]}" [c]="${VK[c]}" [d]="${VK[d]}")
     # doQueries
 

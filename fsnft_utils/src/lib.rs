@@ -1,37 +1,103 @@
-use std::any::type_name;
+use std::any::{type_name};
 
 use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use cosmwasm_std::{HumanAddr, Uint128, Storage, ReadonlyStorage, StdResult, StdError, testing::mock_env, Env};
+use cosmwasm_std::{
+    HumanAddr, Uint128, Storage, ReadonlyStorage, StdResult, StdError, CosmosMsg, WasmMsg, from_binary,
+    Binary, Api, Querier, Extern, Env,
+};
+// use cosmwasm_std::testing::{mock_env};  // mock_dependencies, MockStorage, MockApi, MockQuerier,
 
 use secret_toolkit::{
     serialization::{Json, Serde}, 
-    utils::Query, 
+    utils::{Query, HandleCallback}, 
     snip721::ViewerInfo, 
 };
+
+pub const RESPONSE_BLOCK_SIZE: usize = 256;
 
 /////////////////////////////////////////////////////////////////////////////////
 // Structs for msgs between fractionalizer and ftoken contracts
 /////////////////////////////////////////////////////////////////////////////////
 
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum InterContrMsg{
+    /// Receiver interface function for SNIP721 contract. Msg to be sent to SNIP721 contract
+    /// register that the message sending contract implements ReceiveNft and possibly
+    /// BatchReceiveNft.  If a contract implements BatchReceiveNft, SendNft will always
+    /// call BatchReceiveNft even if there is only one token transferred (the token_ids
+    /// Vec will only contain one ID)
+    RegisterReceiveNft {
+        /// receving contract's code hash
+        code_hash: String,
+        /// optionally true if the contract also implements BatchReceiveNft.  Defaults
+        /// to false if not specified
+        also_implements_batch_receive_nft: Option<bool>,
+        /// optional message length padding
+        padding: Option<String>,
+    },
+    /// Message to send to SNIP721 contract
+    TransferNft {
+        recipient: HumanAddr, 
+        token_id: String,
+    },
+    /// Message to send to SNIP721 contract
+    SendNft {
+        /// address to send the token to
+        contract: HumanAddr,
+        token_id: String,
+        /// optional message to send with the (Batch)RecieveNft callback
+        msg: Option<Binary>,
+    },
+    /// `SendFrom` message to send to SNIP20 token address
+    SendFrom {
+        /// the address to send from
+        owner: HumanAddr,
+        recipient: HumanAddr,
+        recipient_code_hash: Option<String>,
+        amount: Uint128,
+        msg: Option<Binary>,
+        memo: Option<String>,
+        padding: Option<String>,
+    },
+}
+
+impl InterContrMsg {
+    pub fn register_receive(code_hash: &String) -> Self {
+        InterContrMsg::RegisterReceiveNft {
+            code_hash: code_hash.to_string(),
+            also_implements_batch_receive_nft: Some(true), 
+            padding: None, // TODO add padding calculation
+        }
+    }
+}
+
+impl HandleCallback for InterContrMsg {
+    const BLOCK_SIZE: usize = RESPONSE_BLOCK_SIZE;
+}
+
 /// Part of information sent from fractionalizer contract to ftoken contract on instantiation tx
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
 pub struct FtokenContrInit {
     /// index of ftoken contract. Starts from 0 
-    pub idx: u32,
+    pub ftkn_idx: u32,
     /// depositor of NFT into fractionalizer
     pub depositor: HumanAddr,
     /// contract hash of fractionalizer
     pub fract_hash: String,
     /// underlying NFT info
     pub nft_info: UndrNftInfo,
+    /// code hash and address of the allowed bid token (eg: sSCRT)
+    pub bid_token: ContractInfo,
 }
 
 /// ftoken contract information
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct FtokenInfo {
     /// ftoken contract index from the fractionalizer contract's perspective 
-    pub idx: u32,
+    pub ftkn_idx: u32,
     /// address which deposited the nft
     pub depositor: HumanAddr,
     /// code hash and address of ftoken contract
@@ -44,6 +110,8 @@ pub struct FtokenInfo {
     pub symbol: String,
     /// decimal of ftoken
     pub decimals: u8,
+    /// is underlying nft still in the vault (ie: fractionalized)
+    pub in_vault: bool,
 }
 
 /// underlying NFT information
@@ -53,6 +121,33 @@ pub struct UndrNftInfo {
     pub token_id: String,
     /// contract code hash and address of contract of underlying nft 
     pub nft_contr: ContractInfo,
+}
+
+/// bids information as stored by ftoken contract
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
+pub struct BidsInfo {
+    /// bid identifier
+    pub bid_id: u32,
+    pub bidder: HumanAddr,
+    /// amount denominated in the approved bid token
+    pub amount: Uint128,
+    pub status: BidStatus,
+}
+
+/// Query messages to be sent to SNIP721 contract 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BidStatus {
+    WonRetrieved,
+    WonInVault,
+    Active,
+    Lost,    
+}
+
+impl Default for BidStatus {
+    fn default() -> Self {
+        BidStatus::Active
+    }
 }
 
 /// Part of initialization message sent by USERS to fractionalizer 
@@ -67,6 +162,8 @@ pub struct FtokenConf {
     pub supply: Uint128,
     /// determines the lowest denomination
     pub decimals: u8,
+    /// determines the allowed bid token (eg: sSCRT)
+    pub bid_token: ContractInfo,
 }
 
 /// code hash and address of a contract
@@ -102,7 +199,7 @@ pub enum S721QueryMsg {
 }
 
 impl Query for S721QueryMsg {
-    const BLOCK_SIZE: usize = 256;
+    const BLOCK_SIZE: usize = RESPONSE_BLOCK_SIZE;
 }
 
 
@@ -172,6 +269,49 @@ pub fn json_remove<S: Storage>(storage: &mut S, key: &[u8]) {
     storage.remove(key);
 }
 
+/////////////////////////////////////////////////////////////////////////////////
+// functions
+/////////////////////////////////////////////////////////////////////////////////
+
+/// Creates a `SendNft` cosmos msg to be sent to NFT contract 
+/// * `deps` - mutable reference to Extern containing all the contract's external dependencies
+/// * `env` - Env of contract's environment
+/// * `contract` - HumanAddr (String) of receiver of nft, ie: ftoken contract address
+pub fn send_nft_msg<S: Storage, A: Api, Q: Querier>(
+    _deps: &mut Extern<S, A, Q>,
+    _env: Env,
+    nft_contr_addr: HumanAddr,
+    nft_contr_hash: String,
+    contract: HumanAddr,
+    token_id: String,
+    msg: Option<Binary>,
+) -> StdResult<CosmosMsg> {
+
+    let contract_msg = InterContrMsg::SendNft {
+            // address of recipient of nft
+            contract, 
+            token_id,
+            msg,
+        };
+
+    let cosmos_msg = contract_msg.to_cosmos_msg(
+        nft_contr_hash, 
+        HumanAddr(nft_contr_addr.to_string()), 
+        None
+    )?;
+
+    Ok(cosmos_msg)
+
+    // // create messages
+    // let messages = vec![cosmos_msg];
+
+    // Ok(HandleResponse {
+    //     messages,
+    //     log: vec![],
+    //     data: None
+    // })
+}
+
 
 /////////////////////////////////////////////////////////////////////////////////
 // multi unit test helpers
@@ -185,13 +325,31 @@ pub fn json_ser_deser<T: Serialize, U: DeserializeOwned>(value: &T) -> StdResult
     Ok(deser)
 }
 
-pub fn more_mock_env(
-    sender: HumanAddr,
-    contract_addr: Option<HumanAddr>,
-    contract_code_hash: Option<String>,
-) -> Env {
-    let mut env = mock_env(sender, &[]);
-    if let Some(i) = contract_addr { env.contract.address = i }
-    if let Some(i) = contract_code_hash { env.contract_code_hash = i }
-    env
+/// extracts the msg from a CosmosMsg. uses DeserializedOwned, so you need to specify the type
+/// when declaring the variable.
+/// # Usage
+/// let var: `type here` = extract_cosmos_msg(&message).unwrap();
+pub fn extract_cosmos_msg<U: DeserializeOwned>(message: &CosmosMsg) -> StdResult<U> {
+    // let mut decode: String; 
+    let msg = match message {
+        CosmosMsg::Wasm(i) => match i {
+            WasmMsg::Execute{msg, ..} => msg,
+            WasmMsg::Instantiate {msg, ..} => msg,
+        },
+        _ => return Err(StdError::generic_err("unable to extract msg from CosmosMsg"))
+    };
+    let decoded: U = from_binary(&msg).unwrap();
+    Ok(decoded)
 }
+
+
+// pub fn more_mock_env(
+//     sender: HumanAddr,
+//     contract_addr: Option<HumanAddr>,
+//     contract_code_hash: Option<String>,
+// ) -> Env {
+//     let mut env = mock_env(sender, &[]);
+//     if let Some(i) = contract_addr { env.contract.address = i }
+//     if let Some(i) = contract_code_hash { env.contract_code_hash = i }
+//     env
+// }
