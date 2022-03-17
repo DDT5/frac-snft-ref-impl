@@ -456,7 +456,7 @@ function doInit() {
 
     # instantiate SNIP20 ("sSCRT") contract
     prng_seed="$(echo "foo bar" | base64)"
-    init_msg='{"name":"Secret SCRT","symbol":"SSCRT","decimals":6,"prng_seed":"'"$prng_seed"'","config":{"public_total_supply":true,"enable_deposit":true,"enable_redeem":true,"enable_mint":true,"enable_burn":true}}'
+    init_msg='{"name":"Secret SCRT","symbol":"SSCRT","decimals":6,"prng_seed":"'"$prng_seed"'","initial_balances":[{"address":"'"${ADDRESS[a]}"'","amount":"10000000"}],"config":{"public_total_supply":true,"enable_deposit":true,"enable_redeem":true,"enable_mint":true,"enable_burn":true}}'
     sscrt="$(create_contract './int_tests/tests/snip20' "snip20contract" "$init_msg")"
     sscrt_h="$(secretcli q compute contract-hash "$sscrt" | sed 's/^0x//')"
 
@@ -479,7 +479,7 @@ function doInit() {
 # ------------------------------------------------------------------------
 # handles
 # ------------------------------------------------------------------------
-function doHandles() {
+function doFractionalize() {
     # mint nft
     handle_w "$snip721" '{"mint_nft":{}}' a
 
@@ -546,7 +546,7 @@ function doFtokenHandles() {
     # handle_w "$ftoken0" '{"transfer":{"recipient":"'"${ADDRESS[b]}"'","amount":"300000"}}' a
 }
 
-function doChecks() {
+function fractionalizeChecks() {
     # NFT is in ftoken contract
     nft_owner="$(compute_query "$snip721" '{"owner_of":{"token_id":"0"}}' | jq -r '.owner_of.owner')"
     assert_eq "$nft_owner" "$ftoken0"
@@ -555,6 +555,22 @@ function doChecks() {
     bal="$(compute_query "$ftoken0" '{"balance":{"address":"'"${ADDRESS[a]}"'","key":"'"${VK_token[a]}"'"}}' | jq -r '.balance.amount')"
     assert_eq "$bal" $supply
 }
+
+function doUnfractionalize() {
+    # give ftoken permission to spend sscrt
+    msg='{"increase_allowance":{"spender":"'"$ftoken0"'","amount":"3000000"}}'
+    handle_w "$sscrt" "$msg" a
+
+    msg='{"bid":{"amount":"3000000"}}'
+    handle_w "$ftoken0" "$msg" a
+
+    msg='{"change_bid_status":{"bid_id":0,"status_idx":1}}'
+    handle_w "$ftoken0" "$msg" a
+
+    msg='{"retrieve_nft":{"bid_idx":0}}'
+    handle_w "$ftoken0" "$msg" a
+}
+
 
 # ------------------------------------------------------------------------
 # queries
@@ -588,6 +604,8 @@ function doQueries() {
     
     compute_query "$ftoken0" '{"debug_query":{}}' | jq '.debug_q_answer.nftviewingkey'
     
+    # sscrt queries
+    compute_query "$sscrt" '{"balance":{"address":"'"${ADDRESS[a]}"'","key":"'"${VK_sscrt[a]}"'"}}'
     
 }
 
@@ -598,10 +616,13 @@ function main() {
     fundCD
     doInit
     create_vk_s721 "$snip721"; declare -g -A VK_nft=([a]="${VK[a]}" [b]="${VK[b]}" [c]="${VK[c]}" [d]="${VK[d]}")
+    create_vk "$sscrt"; declare -g -A VK_sscrt=([a]="${VK[a]}" [b]="${VK[b]}" [c]="${VK[c]}" [d]="${VK[d]}")
     # makePermit $snip721 ${KEY[0]}
-    doHandles
+    doFractionalize
     doFtokenHandles
     create_vk "$ftoken0"; declare -g -A VK_token=([a]="${VK[a]}" [b]="${VK[b]}" [c]="${VK[c]}" [d]="${VK[d]}")
+    fractionalizeChecks
+    #doUnfractionalize
     # doQueries
 
     # print gas_log and success msg

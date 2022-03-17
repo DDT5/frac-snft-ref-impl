@@ -1,6 +1,6 @@
 # ftoken contract
 
-This is a SNIP20-compliant contract that mints and manages the tokens that represent fractional ownership of the underlying NFT. Also handles interactions with the underlying NFT  
+Contract that mints SNIP20-compliant tokens that represent fractional ownership of the underlying NFT. Also handles the DAO, treasury, bidding process, and interactions with the underlying NFT. From a code design perspective, most of the additional logic beyond the standard SNIP-20 contract is implemented via the `ftoken_mod` module  
 
 ## Details  
 A fork of SNIP20 ref impl contract

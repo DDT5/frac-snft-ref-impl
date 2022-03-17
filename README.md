@@ -7,8 +7,8 @@ _This document and repository is work in progress._
 ## Workspace organization <!-- omit in toc --> 
 
 This workspace consists of the following contracts:
-* Fractionalizer: this is the main contract. It handles the fractionalization logic, DAO, treasury, bidding process, and other user interactions. 
-* ftoken: this is a SNIP20-compliant contract that mints and manages the tokens that represent fractional ownership of the underlying NFT. Also handles interactions with the underlying NFT  
+* Fractionalizer: handles fractionalization logic and keeps track of all fractionalized tokens it has created. 
+* ftoken: contract that mints SNIP20-compliant tokens that represent fractional ownership of the underlying NFT. Also handles the DAO, treasury, bidding process, and interactions with the underlying NFT. From a code design perspective, most of the additional logic beyond the standard SNIP-20 contract is implemented via the `ftoken_mod` module  
 
 It also has the following:
 * fsnft_utils: a library of useful structs, enums and functions that are used across multiple contracts
@@ -22,6 +22,7 @@ workspace
 ├── contracts
 │   ├── fractionalizer
 │   └── ftoken
+│       └── ftoken_mod
 ├── fsnft_utils
 └── integration_tests
     └── tests
@@ -50,7 +51,8 @@ workspace
 - [Additional specifications](#additional-specifications)
 - [Design decisions](#design-decisions)
   - [Philosophy](#philosophy)
-  - [Fractionalization](#fractionalization-1)
+  - [Modularity](#modularity)
+  - [SNIP721 compliance](#snip721-compliance)
   - [Royalties](#royalties-1)
   - [Private metadata viewability](#private-metadata-viewability)
   - [Bidding](#bidding-1)
@@ -381,7 +383,10 @@ The base standard aims to ensure it performs functions within scope with minimal
 
 The standards aim to provide applications with tools and flexibility. As such, it does not attempt to solve issues that are use case-specific, such as game theory or tokenomics, or to dictate the "correct" settings to use.
 
-## Fractionalization
+## Modularity
+The ftoken contract is a fork of the [SNIP20 reference contract](https://github.com/scrtlabs/snip20-reference-impl) with significant additional features. The majority of the code for these features are in a separate module `ftoken_mod`. This modular structure is beneficial in many ways: it improves scalability, readibility and flexbility. Also, it allows minimal changes to be made directly on the SNIP20 reference contract, making it easier for developers upgrade to a newer version of the SNIP20 reference contract if needed for their applications. 
+
+## SNIP721 compliance
 
 The standard implementation does not guarantee that the deposited token is fully SNIP721 compliant, as a guarantee is not practical against a determined bad actor. Applications can perform additional checks or have systems in place to mitigate such risks. 
 
