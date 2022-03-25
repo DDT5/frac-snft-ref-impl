@@ -12,7 +12,7 @@ use cosmwasm_std::{
 use secret_toolkit::permit::Permit;
 
 // ftoken additions:
-use fsnft_utils::{FtokenContrInit, FtokenInfo};
+use fsnft_utils::{FtokenContrInit, FtokenInfo, BidsInfo, ContractInfo};
 use crate::{
     receiver::Snip20ReceiveMsg,
 };
@@ -256,11 +256,18 @@ pub enum HandleMsg {
     ChangeBidStatus {
         bid_id: u32,
         status_idx: u8,
+        winning_bid: Option<u32>,
     },
     /// Message bidder calls to retrieve underlying NFT after winning a bid
     RetrieveNft {
         /// the underlying nft token idx, which can be obtained via query (todo)
-        bid_idx: u32,
+        bid_id: u32,
+    },
+    RetrieveBid {
+        bid_id: u32,
+    },
+    ClaimProceeds {
+        bid_id: u32,
     },
 }
 
@@ -485,6 +492,9 @@ pub enum QueryAnswer {
     // temporary for DEBUGGING. Must remove for final implementation
     DebugQAnswer {
         ftokeninfo: FtokenInfo,
+        bids: Vec<BidsInfo>,
+        allowed_bid_tokens: ContractInfo,
+        next_bid_id: u32,
         nftviewingkey: ViewingKey,
     }
 }

@@ -51,6 +51,15 @@ pub enum InterContrMsg{
         /// optional message to send with the (Batch)RecieveNft callback
         msg: Option<Binary>,
     },
+    /// `Send` message to send to SNIP20 token address
+    Send {
+        recipient: HumanAddr,
+        recipient_code_hash: Option<String>,
+        amount: Uint128,
+        msg: Option<Binary>,
+        memo: Option<String>,
+        padding: Option<String>,
+    },
     /// `SendFrom` message to send to SNIP20 token address
     SendFrom {
         /// the address to send from
@@ -138,10 +147,16 @@ pub struct BidsInfo {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum BidStatus {
+    /// bid won, and nft has been retrieved
     WonRetrieved,
+    /// bid won, but nft has not been retrieved
     WonInVault,
+    /// bid still active
     Active,
-    Lost,    
+    /// bid lost, bid amount still in treasury
+    LostInTreasury,
+    /// bid lost, bid amount has been retrieved back from treasury
+    LostRetrieved,    
 }
 
 impl Default for BidStatus {

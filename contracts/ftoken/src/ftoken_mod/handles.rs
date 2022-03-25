@@ -1,18 +1,24 @@
+use std::ops::{Mul, Add};
+use uint::{construct_uint};
+
 use cosmwasm_std::{
     log, Api, Binary, Env, Extern, Uint128,
     HandleResponse, HumanAddr, Querier, StdError,
     StdResult, Storage,
     from_binary, to_binary,
-    CosmosMsg, WasmMsg,
+    CosmosMsg, WasmMsg, 
 };
 
 use crate::{
-    msg::InitMsg,
+    contract::{try_transfer_impl},
+    msg::{InitMsg},
+    state::{Balances, Config}, 
     receiver::Snip20ReceiveMsg,
     ftoken_mod::{
         state::{
         nft_vk_w, nft_vk_r,
         ftoken_contr_s_w, ftoken_contr_s_r, allowed_bid_tokens_r, bids_w, bids_r,
+        won_bid_id_w, won_bid_id_r,
         },
         msg::{InitRes},
     }, 
@@ -29,6 +35,9 @@ use fsnft_utils::{UndrNftInfo, S721QueryMsg, BidsInfo, BidStatus, InterContrMsg,
 use super::state::{bid_id_r, bid_id_w, allowed_bid_tokens_w};
 
 
+/////////////////////////////////////////////////////////////////////////////////
+// Entry-point functions
+/////////////////////////////////////////////////////////////////////////////////
 
 pub fn add_ftoken_init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -87,30 +96,20 @@ pub fn try_bid<S: Storage, A: Api, Q: Querier>(
     // check underlying NFT is still in vault
     let ftkn_info = ftoken_contr_s_r(&deps.storage).load()?;
 
-    // this check is performed on the Receive function ("try_receive_snip20")
-    // if ftkn_info.in_vault == false {
-    //     return Err(StdError::generic_err(format!("Underlying NFT no longer in vault")));
-    // }
-
     // load SNIP20 token ContractInfo
     let token = allowed_bid_tokens_r(&deps.storage).load()?;
 
     // create `SendFrom` msg to send to SNIP20 ("sSCRT") contract
-    let msg = to_binary(&InterContrMsg::SendFrom{
-        owner: env.message.sender,
-        recipient: env.contract.address,
-        recipient_code_hash: Some(env.contract_code_hash),
+    let message = snip20_sendfrom_msg(
+        env.message.sender,
+        env.contract.address,
+        Some(env.contract_code_hash),
         amount,
-        msg: Some(to_binary(&ftkn_info)?),
-        memo: None,
-        padding: None,
-    })?;
-    let message = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: token.address,
-        callback_code_hash: token.code_hash,
-        msg,
-        send: vec![],
-    });
+        Some(to_binary(&ftkn_info)?),
+        token.address,
+        token.code_hash
+    )?;
+    
     let messages = vec![message];
 
     Ok(HandleResponse{
@@ -120,7 +119,8 @@ pub fn try_bid<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-/// SNIP20 sends back Snip20ReceiveMsg message
+/// SNIP20 sends back Snip20ReceiveMsg message. This function is called after:
+/// * try_bid
 pub fn try_receive_snip20<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
@@ -166,12 +166,16 @@ pub fn try_receive_snip20<S: Storage, A: Api, Q: Querier>(
         amount: snip20receivemsg.amount,
         status: BidStatus::Active,
     };
-    bids_w(&mut deps.storage).save(&bid_info.bid_id.to_le_bytes(), &bid_info)?;
+    // Note that bid_id: u32 implements copy, hence no borrowing issues here
+    bids_w(&mut deps.storage).save(&bid_id.to_le_bytes(), &bid_info)?;
+
+    // add 1 to bid_id count
+    bid_id_w(&mut deps.storage).save(&bid_id.add(1u32))?;
     
     Ok(HandleResponse::default())
 }
 
-/// Temporary function to be eventually deleted
+/// TEMPORARY function to be eventually deleted
 /// Allows user to directly change bid status with JSON messages
 /// * `bid_idx` - the bid index
 /// * `status` - the status to change to. A `u8` number that corresponds to the desired status 
@@ -180,17 +184,25 @@ pub fn try_change_bid_status<S: Storage, A: Api, Q: Querier>(
     _env: Env,
     bid_id: u32,
     status_idx: u8,
+    winning_bid: Option<u32>,
 ) -> StdResult<HandleResponse> {
     let mut bid_info = bids_r(&deps.storage).load(&bid_id.to_le_bytes())?;
     let status = match status_idx {
         0 => BidStatus::WonRetrieved,
         1 => BidStatus::WonInVault,
         2 => BidStatus::Active,
-        3 => BidStatus::Lost,  
-        _ => BidStatus::Active, // temp... ie: if invalid index, just keep it at BidStatus::Active
+        3 => BidStatus::LostInTreasury,
+        4 => BidStatus::LostRetrieved,  
+        _ => BidStatus::Active, // temp... ie: if invalid index, just keep it at BidStatus::Active, which is the default
     };
     bid_info.status = status;
     bids_w(&mut deps.storage).save(&bid_id.to_le_bytes(), &bid_info)?;
+
+    // save winning bid
+    if let Some(won_bid_id) = winning_bid {
+        won_bid_id_w(&mut deps.storage).save(&won_bid_id)?;
+    }
+
     Ok(HandleResponse::default())
 }
 
@@ -215,15 +227,15 @@ pub fn try_retrieve_nft<S: Storage, A: Api, Q: Querier>(
     env: Env,
     bid_id: u32,   
 ) -> StdResult<HandleResponse> {
-    // check that function caller is the bidder
     let mut bid_info = bids_r(&deps.storage).load(&bid_id.to_le_bytes())?;
+    // check that function caller is the bidder
     if &bid_info.bidder != &env.message.sender {
         return Err(StdError::generic_err(
             "You are not the bidder"
         ));
     }; 
 
-    // check that bid had been won 
+    // check that bid had won and nft is still in vault
     if bid_info.status != BidStatus::WonInVault {
         return Err(StdError::generic_err(
             "Cannot retrieve underlying NFT"
@@ -250,6 +262,135 @@ pub fn try_retrieve_nft<S: Storage, A: Api, Q: Querier>(
 
     Ok(HandleResponse{
         messages: vec![send_nft_msg],
+        log: vec![],
+        data: None,
+    })
+}
+
+pub fn try_retrieve_bid<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    bid_id: u32,   
+) -> StdResult<HandleResponse> {
+    let mut bid_info = bids_r(&deps.storage).load(&bid_id.to_le_bytes())?;
+    // check that function caller is the bidder
+    if &bid_info.bidder != &env.message.sender {
+        return Err(StdError::generic_err(
+            "You are not the bidder"
+        ));
+    }; 
+
+    // check that bid had lost and bid amount is still in treasury
+    if bid_info.status != BidStatus::LostInTreasury {
+        return Err(StdError::generic_err(
+            "Cannot retrieve bid tokens"
+        ));
+    }
+
+    // change state to indicate that bid tokens have been retrieved
+    bid_info.status = BidStatus::LostRetrieved;
+    bids_w(&mut deps.storage).save(&bid_id.to_le_bytes(), &bid_info)?;
+    
+    // create `Send` msg to send to SNIP20 ("sSCRT") contract, to transfer bid back to bidder who lost
+    // load SNIP20 token ContractInfo
+    let token = allowed_bid_tokens_r(&deps.storage).load()?;
+    let amount = bid_info.amount;
+    
+    let message = snip20_send_msg(
+        env.message.sender, 
+        None, 
+        amount, 
+        None, 
+        token.address, 
+        token.code_hash,
+    )?;
+
+    let messages = vec![message];
+
+    Ok(HandleResponse{
+        messages,
+        log: vec![],
+        data: None,
+    })
+}
+
+
+/// For ftoken holders to claim their pro-rata share of sale proceeds, after a bid has won 
+pub fn try_claim_proceeds<S: Storage, A: Api, Q:Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    bid_id: u32,
+) -> StdResult<HandleResponse> {
+    let bid_info = bids_r(&deps.storage).load(&bid_id.to_le_bytes())?;
+    // check if BidStatus is `WonRetrieved` or `WonInVault`
+    if bid_info.status != BidStatus::WonRetrieved && bid_info.status != BidStatus::WonInVault {
+        return Err(StdError::generic_err(
+            "Cannot claim proceeds"
+        ));
+    }
+
+    // storage: how much ftoken does sender have?
+    let balances = Balances::from_storage(&mut deps.storage);
+    let account_balance = balances.balance(&deps.api.canonical_address(&env.message.sender)?);
+
+    // transfer ownership of all sender's ftokens to this contract
+    // can change to burn mechanism: might be more robust to division inaccuracies esp for very small ftoken holders
+    try_transfer_impl(
+        deps, 
+        &deps.api.canonical_address(&env.message.sender.clone())?,
+        &deps.api.canonical_address(&env.contract.address.clone())?,
+        Uint128(account_balance),
+        None,
+        &env.block,
+    )?;
+
+    // calculate amount of bid (in SNIP20 tokens) to transfer to sender 
+    let won_bid_id = won_bid_id_r(&deps.storage).load()?;
+    let bid_info = bids_r(&deps.storage).load(&won_bid_id.to_le_bytes())?;
+    let bid_size = bid_info.amount;
+    
+    let config = Config::from_storage(&mut deps.storage);
+    let total_supply = config.total_supply();
+
+    construct_uint! {
+        pub struct U256(4);
+    }
+    // u128::MAX has 38 zeros. Even in the most extreme case, this shouldn't cause precision errors
+    let precision = U256::from(10u8).pow(U256::from(39u8));
+
+    let tot_supply_u256 = U256::from(total_supply);
+    let bid_size_u256 = U256::from(bid_size.u128());
+    let acc_bal_u256 = U256::from(account_balance);
+    let acc_bal_u256_pres = acc_bal_u256.checked_mul(precision).unwrap();
+    
+    // pro-rata proportion, in approx exp(38) precision
+    let pro_rata_percent_op = (acc_bal_u256_pres).checked_div(tot_supply_u256); 
+    let pro_rata_percent = match pro_rata_percent_op {
+        None => return Err(StdError::generic_err("Total ftoken supply is zero... How did this happen?")),
+        Some(i) => i,
+    };
+
+    // Note if bid_size is u128::MAX, this still should not overflow as 2^256 = 2^128^2, and
+    // pro_rata_percent < u128::MAX. But note that U256::MAX > (u128::MAX)^2, perhaps due to the way it is 
+    // implemented?
+    let pro_rata_proceeds = pro_rata_percent.mul(bid_size_u256).checked_div(precision).unwrap().low_u128();
+    let pro_rata_proceeds = Uint128(pro_rata_proceeds);
+
+    // create `SendFrom` msg to send to SNIP20 ("sSCRT") contract, to transfer pro-rata proceeds to ftoken holder
+    let token = allowed_bid_tokens_r(&deps.storage).load()?;
+    let message = snip20_send_msg(
+        env.message.sender, 
+        None, 
+        pro_rata_proceeds, 
+        None, 
+        token.address, 
+        token.code_hash
+    )?;
+
+    let messages = vec![message];
+
+    Ok(HandleResponse {
+        messages,
         log: vec![],
         data: None,
     })
@@ -308,7 +449,7 @@ pub fn try_batch_receive_nft<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::generic_err("nft not transferred to vault, reversing transaction"))
     } else if query_response.owner_of.approvals != vec![] {
         return Err(StdError::generic_err(
-            "there are current approvals to transfer, which is not allowed when nft is in the vault"
+            "there are current approvals to transfer the nft, which is not allowed when nft is in the vault"
         ))
     }
     // optional using query permits
@@ -330,4 +471,111 @@ pub fn try_batch_receive_nft<S: Storage, A: Api, Q: Querier>(
         log: log_msg,
         data: None,
     })
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+// Private functions
+/////////////////////////////////////////////////////////////////////////////////
+
+/// function to generate `SendFrom` cosmos_msg to send to SNIP20 token contract
+/// * `owner` - token transfers from this address
+/// * `recipient` - token transfer to this address
+/// * `recipient_code_hash` - optional hash
+/// * `amount` - amount of tokens to send in smallest denomination
+/// * `msg_to_recipient` - optional cosmos message to send to recipient
+/// * `contract_addr` - the address of the SNIP20 contract
+/// * `callback_code_hash` - the code hash of the SNIP20 contract
+fn snip20_sendfrom_msg(
+    owner: HumanAddr,
+    recipient: HumanAddr,
+    recipient_code_hash: Option<String>,
+    amount: Uint128,
+    msg_to_recipient: Option<Binary>,
+    contract_addr: HumanAddr,
+    callback_code_hash: String,
+) -> StdResult<CosmosMsg> {
+    let message = to_binary(&InterContrMsg::SendFrom{
+        owner,
+        recipient,
+        recipient_code_hash,
+        amount,
+        msg: msg_to_recipient,
+        memo: None,
+        padding: None,
+    })?;
+    let cosmos_message = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr,
+        callback_code_hash,
+        msg: message,
+        send: vec![],
+    });
+    
+    Ok(cosmos_message)
+}
+
+/// function to generate `Send` cosmos_msg to send to SNIP20 token contract
+/// `SendFrom` appears to require approval even if owner `SendFrom` its own tokens 
+/// * `owner` - token transfers from this address
+/// * `recipient` - token transfer to this address
+/// * `recipient_code_hash` - optional hash
+/// * `amount` - amount of tokens to send in smallest denomination
+/// * `msg_to_recipient` - optional cosmos message to send to recipient
+/// * `contract_addr` - the address of the SNIP20 contract
+/// * `callback_code_hash` - the code hash of the SNIP20 contract
+fn snip20_send_msg(
+    recipient: HumanAddr,
+    recipient_code_hash: Option<String>,
+    amount: Uint128,
+    msg_to_recipient: Option<Binary>,
+    contract_addr: HumanAddr,
+    callback_code_hash: String,
+) -> StdResult<CosmosMsg> {
+    let message = to_binary(&InterContrMsg::Send{
+        recipient,
+        recipient_code_hash,
+        amount,
+        msg: msg_to_recipient,
+        memo: None,
+        padding: None,
+    })?;
+    let cosmos_message = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr,
+        callback_code_hash,
+        msg: message,
+        send: vec![],
+    });
+    
+    Ok(cosmos_message)
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+// Unit tests
+/////////////////////////////////////////////////////////////////////////////////
+
+#[cfg(test)]
+mod tests {
+    use std::ops::{Mul};
+
+    // use super::*;
+    use uint::{construct_uint};
+    
+    construct_uint! {
+        pub struct U256(4);
+    }
+
+    #[test]
+    fn temp_test() {
+        let precision = U256::from(10u8).pow(U256::from(39u8));
+        dbg!(&precision);
+        dbg!(&precision.low_u128());
+        let max = U256::from(u128::MAX);
+        let mut max2 = max.mul(max);
+        dbg!(&max2);
+        max2 += 2u128.into();
+        dbg!(&max2);
+        let mut max256 = U256::from(0u8);
+        max256 = max256.overflowing_sub(U256::from(1u8)).0;
+        dbg!(&max256);
+        dbg!(&max256-&max2);
+    }
 }

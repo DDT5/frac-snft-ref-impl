@@ -27,7 +27,9 @@ use secret_toolkit::permit::{validate, Permission, Permit, RevokedPermits};
 // ftoken additions:
 use crate::{
     ftoken_mod::{
-        handles::{add_ftoken_init, try_batch_receive_nft, try_bid, try_receive_snip20, try_change_bid_status, try_retrieve_nft},
+        handles::{
+            add_ftoken_init, try_batch_receive_nft, try_bid, try_receive_snip20, try_change_bid_status, try_retrieve_nft,
+            try_retrieve_bid, try_claim_proceeds},
         queries::{debug_query},
     }
 };
@@ -289,18 +291,34 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::ChangeBidStatus {
             bid_id,
             status_idx,
+            winning_bid,
         } => try_change_bid_status(
             deps,
             env,
             bid_id,
             status_idx,
+            winning_bid,
         ),
-        HandleMsg::RetrieveNft{
-            bid_idx,
+        HandleMsg::RetrieveNft {
+            bid_id,
         } => try_retrieve_nft(
             deps,
             env,
-            bid_idx,
+            bid_id,
+        ),
+        HandleMsg::RetrieveBid {
+            bid_id,
+        } => try_retrieve_bid(
+            deps, 
+            env,
+            bid_id,
+        ),
+        HandleMsg::ClaimProceeds {
+            bid_id,
+        } => try_claim_proceeds(
+            deps,
+            env,
+            bid_id,
         )
     };
 
@@ -922,7 +940,8 @@ fn try_redeem<S: Storage, A: Api, Q: Querier>(
     Ok(res)
 }
 
-fn try_transfer_impl<S: Storage, A: Api, Q: Querier>(
+// ftoken addition: added `pub(crate)`
+pub(crate) fn try_transfer_impl<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     sender: &CanonicalAddr,
     recipient: &CanonicalAddr,

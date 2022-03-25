@@ -17,6 +17,7 @@ pub const BIDS_STORE: &[u8] = b"bidstore";
 pub const PREFIX_UNDR_NFT: &[u8] = b"undrlynft";
 pub const NFT_VIEW_KEY: &[u8] = b"nftviewkey";
 pub const CURRENT_BID_ID: &[u8] = b"currentbidid";
+pub const WON_BID_ID: &[u8] = b"wonbidid";
 
 
 
@@ -63,6 +64,15 @@ pub fn bid_id_w<S: Storage>(storage: &mut S) -> Singleton<S, u32> {
 pub fn bid_id_r<S: Storage>(storage: &S) -> ReadonlySingleton<S, u32> {
     singleton_read( storage, CURRENT_BID_ID)
 }
+
+/// index the bid that won 
+pub fn won_bid_id_w<S: Storage>(storage: &mut S) -> Singleton<S, u32> {
+    singleton(storage, WON_BID_ID)
+}
+pub fn won_bid_id_r<S: Storage>(storage: &S) -> ReadonlySingleton<S, u32> {
+    singleton_read( storage, WON_BID_ID)
+}
+
 
 /// stores ContractInfo of allowed bid tokens
 pub fn allowed_bid_tokens_w<S: Storage>(storage: &mut S) -> Singleton<S, ContractInfo> {
