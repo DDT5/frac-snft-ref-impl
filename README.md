@@ -12,7 +12,7 @@ This workspace consists of the following contracts:
 
 It also has the following:
 * fsnft_utils: a library of useful structs, enums and functions that are used across multiple contracts
-* int_tests: multi-contract unit tests and integration tests
+* int_tests: multi-contract unit tests (in the `src` subfolder) and integration tests (in the `tests` subfolder)
 
 
 ```
@@ -24,7 +24,8 @@ workspace
 │   └── ftoken
 │       └── ftoken_mod
 ├── fsnft_utils
-└── integration_tests
+└── int_tests
+    ├── src
     └── tests
 ```
 

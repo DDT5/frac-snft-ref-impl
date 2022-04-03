@@ -21,15 +21,15 @@ declare -A FROM=(
 # We define this as a function rather than as an alias because it has more flexible expansion behavior.
 # In particular, it's not possible to dynamically expand aliases, but `tx_of` dynamically executes whatever
 # we specify in its arguments.
-# function secretcli() {
-#    docker exec secretdev /usr/bin/secretd "$@"
-# }
-
-# Alternative to above, when interactively using cli
-# docker exec -it secretdev /bin/bash
 function secretcli() {
-    secretd "$@"
-};
+    docker exec secretdev /usr/bin/secretd "$@"
+}
+
+# # Alternative to above, when interactively using cli
+# # docker exec -it secretdev /bin/bash
+# function secretcli() {
+#     secretd "$@"
+# };
 
 
 # Just like `echo`, but prints to stderr
@@ -547,19 +547,27 @@ function doFractionalize() {
                     "address":"'"$snip721"'"
                 }
             },
-            "ftkn_conf":{
+            "ftkn_init":{
                 "name":"ftokencoin",
                 "symbol":"FTKN",
                 "supply":"'"$supply"'",
                 "decimals":6,
-                "bid_token":{
-                    "code_hash":"'"$sscrt_h"'",
-                    "address":"'"$sscrt"'"
+                "ftkn_conf":{
+                    "bid_conf":{
+                        "bid_token":{
+                            "code_hash":"'"$sscrt_h"'",
+                            "address":"'"$sscrt"'"
+                        },
+                        "min_ftkn_bond_prd":1,
+                        "bid_period":2,
+                        "bid_vote_quorum":"1000"
+                    }
                 }
             }
         }
-    }'
+        }'
     msg="$(echo $msg | sed  's/ *//g')"
+    # echo ${msg:437:20}
     handle_w "$fract" "$msg" a
 }
 
@@ -593,7 +601,19 @@ function s20_balance() {
 
 
 function doUnfractionalize() {
-    # give ftoken permission to spend sscrt
+    # `a` and `b` stake their ftokens
+    ftkn_a=$(("$supply" - "$transfer"))
+    ftkn_b="$transfer"
+    msg='{"stake":{"amount":"'"$ftkn_a"'"}}'
+    handle "$ftoken0" "$msg" a
+    msg='{"stake":{"amount":"'"$ftkn_b"'"}}'
+    handle_w "$ftoken0" "$msg" b
+    bal_a="$(s20_balance "$ftoken0" "${ADDRESS[a]}" "${VK_token[a]}")"
+    bal_b="$(s20_balance "$ftoken0" "${ADDRESS[b]}" "${VK_token[b]}")"
+    assert_eq "$bal_a" 0
+    assert_eq "$bal_b" 0
+
+    # `c` give ftoken permission to spend sscrt
     msg='{"increase_allowance":{"spender":"'"$ftoken0"'","amount":"1000"}}'
     handle_w "$sscrt" "$msg" c
 
@@ -604,8 +624,9 @@ function doUnfractionalize() {
     bal="$(s20_balance "$sscrt" "${ADDRESS[c]}" "${VK_sscrt[c]}")"
     assert_eq "$bal" 70
 
-    # change bid status to lose `LostInTreasury`. idx = 3
-    msg='{"change_bid_status":{"bid_id":0,"status_idx":3}}'
+    # finalize vote count. no votes => does not reach quorum
+    sleep 6
+    msg='{"finalize_vote_count":{"bid_id":0}}'
     handle_w "$ftoken0" "$msg" a
 
     # bidder can retrieve bid
@@ -623,8 +644,12 @@ function doUnfractionalize() {
     msg='{"bid":{"amount":"'"$bid_amt"'"}}'
     handle_w "$ftoken0" "$msg" c
 
-    # change bid status to lose `WonInVault`(idx = 1), and set this bid_id as winning_bid
-    msg='{"change_bid_status":{"bid_id":1,"status_idx":1,"winning_bid":1}}'
+    # `a` votes yes, `b` votes no => final result = yes
+    handle "$ftoken0" '{"vote":{"bid_id":1,"vote":"yes"}}' a
+    handle_w "$ftoken0" '{"vote":{"bid_id":1,"vote":"no"}}' b
+
+    # finalize vote count. yes>no, so bid wins
+    msg='{"finalize_vote_count":{"bid_id":1}}'
     handle_w "$ftoken0" "$msg" a
 
     # bidder retrieves nft
@@ -634,19 +659,32 @@ function doUnfractionalize() {
     nft_owner="$(compute_query "$snip721" '{"owner_of":{"token_id":"0"}}' | jq -r '.owner_of.owner')"
     assert_eq "$nft_owner" "${ADDRESS[c]}"
 
+    # `a` and `b` unstake their tokens
+    # ftkn_a=$(("$supply" - "$transfer"))
+    # ftkn_b="$transfer"
+    msg='{"unstake":{"amount":"'"$ftkn_a"'"}}'
+    handle "$ftoken0" "$msg" a
+    msg='{"unstake":{"amount":"'"$ftkn_b"'"}}'
+    handle_w "$ftoken0" "$msg" b
+    bal_a="$(s20_balance "$ftoken0" "${ADDRESS[a]}" "${VK_token[a]}")"
+    bal_b="$(s20_balance "$ftoken0" "${ADDRESS[b]}" "${VK_token[b]}")"
+    assert_eq "$bal_a" "$ftkn_a"
+    assert_eq "$bal_b" "$ftkn_b"
+    
     # ftoken holder claims proceeds
     # get `a` and `b` sscrt balances
     a_bal="$(s20_balance "$sscrt" "${ADDRESS[a]}" "${VK_sscrt[a]}")"
     b_bal="$(s20_balance "$sscrt" "${ADDRESS[b]}" "${VK_sscrt[b]}")"
     # perform tx
     msg='{"claim_proceeds":{"bid_id":1}}'
-    handle_w "$ftoken0" "$msg" a
+    handle "$ftoken0" "$msg" a
     handle_w "$ftoken0" "$msg" b
     # `a` and `b` gets their claim proceeds
     a_bal_after="$(s20_balance "$sscrt" "${ADDRESS[a]}" "${VK_sscrt[a]}")"
     b_bal_after="$(s20_balance "$sscrt" "${ADDRESS[b]}" "${VK_sscrt[b]}")"
     assert_eq $(("$a_bal_after" - "$a_bal")) $((("$supply"-"$transfer") * "$bid_amt" / "$supply"))
     assert_eq $(("$b_bal_after" - "$b_bal")) $(("$transfer" * "$bid_amt" / "$supply"))
+
 }
 
 

@@ -8,7 +8,7 @@ use cosmwasm_storage::{
     singleton, singleton_read, ReadonlySingleton, Singleton,
 };
 
-use fsnft_utils::{FtokenInfo};
+use fsnft_utils::{FtokenInstance};
 
 pub const CONFIG_KEY: &[u8] = b"config";
 pub const PENDING_REG: &[u8] = b"pendreg";
@@ -24,10 +24,11 @@ pub const FTOKEN_CONTR_FRAC: &[u8] = b"ftkncontr_frac";
 
 /// FtokenContr storage: stores information on the ftokens that fractionalizer contract
 /// has created
-pub fn ftoken_contr_w<S: Storage>(storage: &mut S) -> Bucket<S, FtokenInfo> {
+pub fn ftoken_instance_w<S: Storage>(storage: &mut S) -> Bucket<S, FtokenInstance> {
     bucket(FTOKEN_CONTR_FRAC, storage)
 }
-pub fn ftoken_contr_r<S: Storage>(storage: &S) -> ReadonlyBucket<S, FtokenInfo> {
+//ftoken_contr_r
+pub fn ftoken_instance_r<S: Storage>(storage: &S) -> ReadonlyBucket<S, FtokenInstance> {
     bucket_read(FTOKEN_CONTR_FRAC, storage)
 }
 

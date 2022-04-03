@@ -11,7 +11,7 @@ use crate::{
     state::UploadedFtkn,
 };
 
-use fsnft_utils::{FtokenContrInit, FtokenInfo, FtokenConf, UndrNftInfo, ContractInfo};
+use fsnft_utils::{FtokenContrInit, FtokenInstance, FtokenInit, UndrNftInfo, ContractInfo};
 
 /////////////////////////////////////////////////////////////////////////////////
 // Init message
@@ -54,7 +54,7 @@ pub enum HandleMsg {
     },
     /// Receiver for InitResponse callback from ftoken contract  
     ReceiveFtokenCallback {
-        ftoken_contr: FtokenInfo,
+        ftkn_instance: FtokenInstance,
     },
     /// User calls this function to fractionalize an NFT
     /// User must first give permission to fractionalizer to transfer the NFT
@@ -63,7 +63,7 @@ pub enum HandleMsg {
         /// token id and SNIP721 contract address and hash
         nft_info: UndrNftInfo,
         /// configuration of fractionalized token
-        ftkn_conf: FtokenConf,
+        ftkn_init: FtokenInit,
     },
 }
 

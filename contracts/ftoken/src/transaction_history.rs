@@ -10,8 +10,11 @@ use secret_toolkit::storage::{AppendStore, AppendStoreMut};
 
 use crate::state::Config;
 
-const PREFIX_TXS: &[u8] = b"transactions";
-const PREFIX_TRANSFERS: &[u8] = b"transfers";
+// ftoken additions: changed the bytes so does not conflict with SNIP20-standard-implementation.
+// This is so multi-contract unit tests can work without the storage keys colliding. 
+// Only for unit tests to work. Not critical for functioning properly on blockchain.
+const PREFIX_TXS: &[u8] = b"fttransactions";
+const PREFIX_TRANSFERS: &[u8] = b"fttransfers";
 
 // Note that id is a globally incrementing counter.
 // Since it's 64 bits long, even at 50 tx/s it would take

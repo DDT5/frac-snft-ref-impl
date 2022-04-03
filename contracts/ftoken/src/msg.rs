@@ -12,10 +12,11 @@ use cosmwasm_std::{
 use secret_toolkit::permit::Permit;
 
 // ftoken additions:
-use fsnft_utils::{FtokenContrInit, FtokenInfo, BidsInfo, ContractInfo};
+use fsnft_utils::{FtokenContrInit, FtokenInfo, BidsInfo, FtokenConf};
 use crate::{
     receiver::Snip20ReceiveMsg,
 };
+use crate::ftoken_mod::state::Vote;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InitialBalance {
@@ -252,12 +253,27 @@ pub enum HandleMsg {
     },
     /// Receiver interface for sSCRT contract's `SendFrom` callback
     Receive(Snip20ReceiveMsg),
-    /// temporary
-    ChangeBidStatus {
-        bid_id: u32,
-        status_idx: u8,
-        winning_bid: Option<u32>,
+    /// Stake ftokens
+    Stake {
+        amount: Uint128,
     },
+    /// Unstake ftokens
+    Unstake {
+        amount: Uint128,
+    },
+    Vote {
+        bid_id: u32,
+        vote: Vote,
+    },
+    FinalizeVoteCount {
+        bid_id: u32,
+    },
+    // /// temporary
+    // ChangeBidStatus {
+    //     bid_id: u32,
+    //     status_idx: u8,
+    //     winning_bid: Option<u32>,
+    // },
     /// Message bidder calls to retrieve underlying NFT after winning a bid
     RetrieveNft {
         /// the underlying nft token idx, which can be obtained via query (todo)
@@ -266,9 +282,7 @@ pub enum HandleMsg {
     RetrieveBid {
         bid_id: u32,
     },
-    ClaimProceeds {
-        bid_id: u32,
-    },
+    ClaimProceeds { },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
@@ -493,7 +507,8 @@ pub enum QueryAnswer {
     DebugQAnswer {
         ftokeninfo: FtokenInfo,
         bids: Vec<BidsInfo>,
-        allowed_bid_tokens: ContractInfo,
+        won_bid: u32,
+        ftkn_config: FtokenConf,
         next_bid_id: u32,
         nftviewingkey: ViewingKey,
     }

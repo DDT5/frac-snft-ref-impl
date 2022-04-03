@@ -1,5 +1,8 @@
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 use cosmwasm_std::{
-    Storage, 
+    Storage, Uint128, 
 };
 use cosmwasm_storage::{
     // PrefixedStorage, ReadonlyPrefixedStorage, 
@@ -9,15 +12,20 @@ use cosmwasm_storage::{
 use crate::{
     viewing_key::ViewingKey
 };
-use fsnft_utils::{FtokenInfo, ContractInfo, BidsInfo};
+use fsnft_utils::{FtokenInfo, BidsInfo, FtokenConf};
 
 pub const FTOKEN_CONTR_FTKN: &[u8] = b"ftkncontr_ftkn";
+pub const FTKN_CONFIG: &[u8] = b"ftknconfig";
+pub const FTKN_STAKE: &[u8] = b"ftknstake";
 pub const ALLOWED_TOKENS: &[u8] = b"allowedtokens";
 pub const BIDS_STORE: &[u8] = b"bidstore";
 pub const PREFIX_UNDR_NFT: &[u8] = b"undrlynft";
 pub const NFT_VIEW_KEY: &[u8] = b"nftviewkey";
 pub const CURRENT_BID_ID: &[u8] = b"currentbidid";
 pub const WON_BID_ID: &[u8] = b"wonbidid";
+pub const VOTES_BUCKET: &[u8] = b"votesbucket";
+pub const VOTES_TOTAL: &[u8] = b"votetotal";
+
 
 
 
@@ -33,13 +41,39 @@ pub fn bids_r<S: Storage>(storage: &S) -> ReadonlyBucket<S, BidsInfo> {
     bucket_read(BIDS_STORE, storage)
 }
 
-// pub fn multilevel_bucket<S: Storage>(
-//     storage: &mut S,
-//     id: u8
-// ) -> Bucket<S, String> {
-//     let bucket: Bucket<_,String> = Bucket::multilevel(&[FTOKEN_CONTR, &id.to_le_bytes()], storage);
-//     bucket
-// }
+/// staked ftokens
+pub fn ftkn_stake_w<S: Storage>(storage: &mut S) -> Bucket<S, StakedTokens> {
+    bucket(FTKN_STAKE, storage)
+}
+pub fn ftkn_stake_r<S: Storage>(storage: &S) -> ReadonlyBucket<S, StakedTokens> {
+    bucket_read(FTKN_STAKE, storage)
+}
+
+/// vote tally, which is the running cumulative tally
+pub fn votes_total_w<S: Storage>(storage: &mut S) -> Bucket<S, TotalVotes> {
+    bucket(VOTES_TOTAL, storage)
+}
+pub fn votes_total_r<S: Storage>(storage: &S) -> ReadonlyBucket<S, TotalVotes> {
+    bucket_read(VOTES_TOTAL, storage)
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+// Multi-level Buckets
+/////////////////////////////////////////////////////////////////////////////////
+
+/// Multilevel bucket to store votes. Key intended to be [`bid_id`, HumanAddr]  
+pub fn votes_w<S: Storage>(
+    storage: &mut S,
+    bid_id: u32
+) -> Bucket<S, VoteRegister> {
+    Bucket::multilevel(&[VOTES_BUCKET, &bid_id.to_le_bytes()], storage)
+}
+pub fn votes_r<S: Storage>(
+    storage: &S,
+    bid_id: u32
+) -> ReadonlyBucket<S, VoteRegister> {
+    ReadonlyBucket::multilevel(&[VOTES_BUCKET, &bid_id.to_le_bytes()], storage)
+}
 
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -47,14 +81,20 @@ pub fn bids_r<S: Storage>(storage: &S) -> ReadonlyBucket<S, BidsInfo> {
 /////////////////////////////////////////////////////////////////////////////////
 
 
-/// FtokenContr storage: stores information on this ftokens contract, which would 
-/// have been created by the fractionalizer contract
-/// _s_ stands for singleton, to differentiate vs. the function in the fractionalizer contract
-pub fn ftoken_contr_s_w<S: Storage>(storage: &mut S) -> Singleton<S, FtokenInfo> {
+/// FtokenContr storage: stores information on this ftokens contract
+pub fn ftoken_info_w<S: Storage>(storage: &mut S) -> Singleton<S, FtokenInfo> {
     singleton(storage, FTOKEN_CONTR_FTKN)
 }
-pub fn ftoken_contr_s_r<S: Storage>(storage: &S) -> ReadonlySingleton<S, FtokenInfo> {
+pub fn ftoken_info_r<S: Storage>(storage: &S) -> ReadonlySingleton<S, FtokenInfo> {
     singleton_read( storage, FTOKEN_CONTR_FTKN)
+}
+
+/// config specifically for ftoken functionality
+pub fn ftkn_config_w<S: Storage>(storage: &mut S) -> Singleton<S, FtokenConf> {
+    singleton(storage, FTKN_CONFIG)
+}
+pub fn ftkn_config_r<S: Storage>(storage: &S) -> ReadonlySingleton<S, FtokenConf> {
+    singleton_read( storage, FTKN_CONFIG)
 }
 
 /// index the next bid to be received 
@@ -73,15 +113,6 @@ pub fn won_bid_id_r<S: Storage>(storage: &S) -> ReadonlySingleton<S, u32> {
     singleton_read( storage, WON_BID_ID)
 }
 
-
-/// stores ContractInfo of allowed bid tokens
-pub fn allowed_bid_tokens_w<S: Storage>(storage: &mut S) -> Singleton<S, ContractInfo> {
-    singleton(storage,ALLOWED_TOKENS)
-}
-pub fn allowed_bid_tokens_r<S: Storage>(storage: &S) -> ReadonlySingleton<S, ContractInfo> {
-    singleton_read(storage, ALLOWED_TOKENS)
-}
-
 /// stores viewing key to query nft contract
 pub fn nft_vk_w<S: Storage>(storage: &mut S) -> Singleton<S, ViewingKey> {
     singleton(storage, NFT_VIEW_KEY)
@@ -95,7 +126,40 @@ pub fn nft_vk_r<S: Storage>(storage: &S) -> ReadonlySingleton<S, ViewingKey> {
 // Structs
 /////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct StakedTokens {
+    pub amount: Uint128,
+    pub unlock_height: u64,
+}
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
+pub struct VoteRegister {
+    pub yes: Uint128,
+    pub no: Uint128,
+}
+
+// impl Default for VoteRegister {
+//     fn default() -> Self {
+//         Self {
+//             yes: Uint128(0),
+//             no: Uint128(0),
+//         }
+//     }
+// }
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Vote {
+    Yes,
+    No,
+}
+
+/// vote count, weighted by staked ftokens
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
+pub struct TotalVotes {
+    pub(crate) yes: Uint128,
+    pub(crate) no: Uint128,
+}
 
 /////////////////////////////////////////////////////////////////////////////////
 // to be removed eventually..

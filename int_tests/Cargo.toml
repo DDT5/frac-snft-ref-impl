@@ -16,3 +16,5 @@ secret-toolkit = "0.2.0" # Uncomment this for extra tools
 fractionalizer = { path = "../contracts/fractionalizer" }
 ftoken = { path = "../contracts/ftoken" }
 fsnft_utils = { path = "../fsnft_utils" }
+snip721-reference-impl = { path = "./tests/snip721" }
+snip20-reference-impl = { path = "./tests/snip20" }

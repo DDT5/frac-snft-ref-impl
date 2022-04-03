@@ -18,11 +18,11 @@ use crate::{
     },
     state::{
         Config, config_w, config_r,
-        ftkn_idx_w, ftkn_idx_r, ftoken_contr_w, pending_reg_w, pending_reg_r, ftkn_id_hash_w, ftkn_id_hash_r,
+        ftkn_idx_w, ftkn_idx_r, ftoken_instance_w, pending_reg_w, pending_reg_r, ftkn_id_hash_w, ftkn_id_hash_r,
     },
 };
 
-use fsnft_utils::{FtokenConf, FtokenContrInit, FtokenInfo, UndrNftInfo, InterContrMsg, send_nft_msg};
+use fsnft_utils::{FtokenInit, FtokenContrInit, FtokenInstance, UndrNftInfo, InterContrMsg, send_nft_msg};
 
 pub const RESPONSE_BLOCK_SIZE: usize = 256;
 
@@ -87,19 +87,19 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         ),
         HandleMsg::Fractionalize {
             nft_info,
-            ftkn_conf,
+            ftkn_init,
         } => try_fractionalize(
             deps,
             env,
             nft_info, 
-            ftkn_conf,
+            ftkn_init,
         ),
         HandleMsg::ReceiveFtokenCallback {
-            ftoken_contr,
+            ftkn_instance,
         } => try_receive_ftoken_callback(
             deps,
             env,
-            ftoken_contr,
+            ftkn_instance,
         ),
     }
 }
@@ -205,7 +205,7 @@ pub fn try_transfer_nft<S: Storage, A: Api, Q: Querier>(
 fn instantiate_ftoken_contr_msg<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    ftkn_conf: FtokenConf,
+    ftkn_init: FtokenInit,
     callback_code_hash: String,
     nft_info: UndrNftInfo,
 ) -> StdResult<CosmosMsg> {
@@ -215,7 +215,7 @@ fn instantiate_ftoken_contr_msg<S: Storage, A: Api, Q: Querier>(
     // create cosmos message
     let init_balance = vec![InitialBalance {
         address: env.message.sender.clone(),  
-        amount: ftkn_conf.supply,
+        amount: ftkn_init.supply,
     }];
     // optionally use Secret Orcale RNG (scrt-rng) for higher security
     let prng_seed = to_binary(&env.message)?;
@@ -229,12 +229,12 @@ fn instantiate_ftoken_contr_msg<S: Storage, A: Api, Q: Querier>(
             depositor: env.message.sender,
             fract_hash: env.contract_code_hash,
             nft_info,
-            bid_token: ftkn_conf.bid_token,
+            ftkn_conf: ftkn_init.ftkn_conf,
         },
-        name: ftkn_conf.name,
+        name: ftkn_init.name,
         admin: None,
-        symbol: ftkn_conf.symbol,
-        decimals: ftkn_conf.decimals,
+        symbol: ftkn_init.symbol,
+        decimals: ftkn_init.decimals,
         initial_balances: Some(init_balance),
         prng_seed,
         config: None,
@@ -261,11 +261,11 @@ fn instantiate_ftoken_contr_msg<S: Storage, A: Api, Q: Querier>(
 pub fn try_receive_ftoken_callback<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    ftoken_contr: FtokenInfo,
+    ftkn_instance: FtokenInstance,
 ) -> StdResult<HandleResponse> {
     // authenticate this is message is coming from the expected ftoken contract
     let exp_depositor = pending_reg_r(&mut deps.storage).load()?;
-    if exp_depositor != ftoken_contr.depositor {
+    if exp_depositor != ftkn_instance.depositor {
         return Err(StdError::generic_err(
             "Depositor does not match expected depositor",
         ));
@@ -274,22 +274,22 @@ pub fn try_receive_ftoken_callback<S: Storage, A: Api, Q: Querier>(
     pending_reg_w(&mut deps.storage).remove(); 
 
     // save ftoken contract info
-    let ftkn_idx = ftoken_contr.ftkn_idx;
-    ftoken_contr_w(&mut deps.storage).save(&ftkn_idx.to_le_bytes(), &ftoken_contr)?;
+    let ftkn_idx = ftkn_instance.ftkn_idx;
+    ftoken_instance_w(&mut deps.storage).save(&ftkn_idx.to_le_bytes(), &ftkn_instance)?;
 
     // `send` NFT from user to ftoken contract
     // does not check if user has given permission to transfer token, because ftoken contract will 
     // perform this check and throw an error if it does not receive the nft
     
-    let msg = Some(to_binary(&ftoken_contr.nft_info)?);
+    let msg = Some(to_binary(&ftkn_instance.init_nft_info)?);
 
     let send_nft_msg = send_nft_msg(
         deps, 
         env, 
-        ftoken_contr.nft_info.nft_contr.address, 
-        ftoken_contr.nft_info.nft_contr.code_hash, 
-        ftoken_contr.ftoken_contr.address,  
-        ftoken_contr.nft_info.token_id, 
+        ftkn_instance.init_nft_info.nft_contr.address, 
+        ftkn_instance.init_nft_info.nft_contr.code_hash, 
+        ftkn_instance.ftoken_contr.address,  
+        ftkn_instance.init_nft_info.token_id, 
         msg,
     )?;
 
@@ -315,7 +315,7 @@ pub fn try_fractionalize<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     nft_info: UndrNftInfo,
-    ftkn_conf: FtokenConf,
+    ftkn_init: FtokenInit,
 ) -> StdResult<HandleResponse> {
     // register receive with the SNIP721 contract
     // may save gas by first checking if already register received -- not implemented here
@@ -331,7 +331,7 @@ pub fn try_fractionalize<S: Storage, A: Api, Q: Querier>(
     let ftoken_init_msg = instantiate_ftoken_contr_msg(
         deps, 
         env, 
-        ftkn_conf,
+        ftkn_init,
         ftkn_code_hash,
         nft_info,
     )?;

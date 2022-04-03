@@ -5,6 +5,12 @@
 .PHONY: build-start-server
 build-start-server: build start-server
 
+# `make start-server` on a different terminal first. Also need to `chmod u+x integration.sh`
+.PHONY: integration-test
+integration-test: build
+	sleep 6
+	if int_tests/tests/integration.sh; then echo -n '\a'; else echo -n '\a'; sleep 0.125; echo -n '\a'; fi
+
 .PHONY: build _build
 build: _build compress-wasm
 _build:

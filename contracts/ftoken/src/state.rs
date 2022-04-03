@@ -15,20 +15,24 @@ use crate::msg::{status_level_to_u8, u8_to_status_level, ContractStatusLevel};
 use crate::viewing_key::ViewingKey;
 use serde::de::DeserializeOwned;
 
-pub static CONFIG_KEY: &[u8] = b"config";
-pub const PREFIX_TXS: &[u8] = b"transfers";
 
-pub const KEY_CONSTANTS: &[u8] = b"constants";
-pub const KEY_TOTAL_SUPPLY: &[u8] = b"total_supply";
-pub const KEY_CONTRACT_STATUS: &[u8] = b"contract_status";
-pub const KEY_MINTERS: &[u8] = b"minters";
-pub const KEY_TX_COUNT: &[u8] = b"tx-count";
+// ftoken additions: changed the bytes (added "ft" prefix) so does not conflict with SNIP20-standard-implementation.
+// This is so multi-contract unit tests can work without the storage keys colliding. 
+// Only for unit tests to work. Not critical for functioning properly on blockchain.
+pub static CONFIG_KEY: &[u8] = b"ftconfig";
+pub const PREFIX_TXS: &[u8] = b"fttransfers";
 
-pub const PREFIX_CONFIG: &[u8] = b"config";
-pub const PREFIX_BALANCES: &[u8] = b"balances";
-pub const PREFIX_ALLOWANCES: &[u8] = b"allowances";
-pub const PREFIX_VIEW_KEY: &[u8] = b"viewingkey";
-pub const PREFIX_RECEIVERS: &[u8] = b"receivers";
+pub const KEY_CONSTANTS: &[u8] = b"ftconstants";
+pub const KEY_TOTAL_SUPPLY: &[u8] = b"fttotal_supply";
+pub const KEY_CONTRACT_STATUS: &[u8] = b"ftcontract_status";
+pub const KEY_MINTERS: &[u8] = b"ftminters";
+pub const KEY_TX_COUNT: &[u8] = b"fttx-count";
+
+pub const PREFIX_CONFIG: &[u8] = b"ftconfig";
+pub const PREFIX_BALANCES: &[u8] = b"ftbalances";
+pub const PREFIX_ALLOWANCES: &[u8] = b"ftallowances";
+pub const PREFIX_VIEW_KEY: &[u8] = b"ftviewingkey";
+pub const PREFIX_RECEIVERS: &[u8] = b"ftreceivers";
 
 
 // Config

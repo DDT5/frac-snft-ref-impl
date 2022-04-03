@@ -6,11 +6,11 @@ use cosmwasm_std::{
 use crate::{
     msg::{QueryAnswer},
     ftoken_mod::{
-        state::{ftoken_contr_s_r, nft_vk_r, bid_id_r, bids_r}
+        state::{ftoken_info_r, nft_vk_r, bid_id_r, bids_r}
     }
 };
 
-use super::state::allowed_bid_tokens_r;
+use super::state::{ftkn_config_r, won_bid_id_r};
 
 
 
@@ -18,7 +18,7 @@ use super::state::allowed_bid_tokens_r;
 pub fn debug_query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
 ) -> QueryResult {
-    let ftokeninfo = ftoken_contr_s_r(&deps.storage).load()?;
+    let ftokeninfo = ftoken_info_r(&deps.storage).load()?;
     let next_bid_id = bid_id_r(&deps.storage).load()?;
     let mut bids = vec![];
     {
@@ -28,13 +28,15 @@ pub fn debug_query<S: Storage, A: Api, Q: Querier>(
             i += 1;
         }
     }
-    let allowed_bid_tokens = allowed_bid_tokens_r(&deps.storage).load()?;
+    let won_bid = won_bid_id_r(&deps.storage).load()?;
+    let ftkn_config = ftkn_config_r(&deps.storage).load()?;
     let nftviewingkey = nft_vk_r(&deps.storage).load()?;
     
     let resp = QueryAnswer::DebugQAnswer {
         ftokeninfo,
         bids,
-        allowed_bid_tokens,
+        won_bid,
+        ftkn_config,
         next_bid_id,
         nftviewingkey,
     };

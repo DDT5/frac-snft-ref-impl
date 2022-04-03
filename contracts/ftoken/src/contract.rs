@@ -28,15 +28,20 @@ use secret_toolkit::permit::{validate, Permission, Permit, RevokedPermits};
 use crate::{
     ftoken_mod::{
         handles::{
-            add_ftoken_init, try_batch_receive_nft, try_bid, try_receive_snip20, try_change_bid_status, try_retrieve_nft,
+            add_ftoken_init, try_batch_receive_nft, try_bid, try_receive_snip20, try_stake, try_unstake,
+            try_vote, try_finalize_vote_count,
+            try_retrieve_nft,
             try_retrieve_bid, try_claim_proceeds},
         queries::{debug_query},
     }
 };
 
+// ftoken additions: changed the bytes so does not conflict with SNIP20-standard-implementation.
+// This is so multi-contract unit tests can work without the storage keys colliding. 
+// Only for unit tests to work. Not critical for functioning properly on blockchain.
 /// We make sure that responses from `handle` are padded to a multiple of this size.
 pub const RESPONSE_BLOCK_SIZE: usize = 256;
-pub const PREFIX_REVOKED_PERMITS: &str = "revoked_permits";
+pub const PREFIX_REVOKED_PERMITS: &str = "ftrevoked_permits";
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -288,17 +293,47 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             env,
             snip20receivemsg,
         ),
-        HandleMsg::ChangeBidStatus {
+        HandleMsg::Stake {
+            amount,
+        } => try_stake(
+            deps,
+            env,
+            amount,
+        ),
+        HandleMsg::Unstake {
+            amount,
+        } => try_unstake(
+            deps,
+            env,
+            amount,
+        ),
+        HandleMsg::Vote {
             bid_id,
-            status_idx,
-            winning_bid,
-        } => try_change_bid_status(
+            vote,
+        } => try_vote(
             deps,
             env,
             bid_id,
-            status_idx,
-            winning_bid,
+            vote,
         ),
+        HandleMsg::FinalizeVoteCount {
+            bid_id,
+        } => try_finalize_vote_count(
+            deps,
+            env,
+            bid_id,
+        ),
+        // HandleMsg::ChangeBidStatus {
+        //     bid_id,
+        //     status_idx,
+        //     winning_bid,
+        // } => try_change_bid_status(
+        //     deps,
+        //     env,
+        //     bid_id,
+        //     status_idx,
+        //     winning_bid,
+        // ),
         HandleMsg::RetrieveNft {
             bid_id,
         } => try_retrieve_nft(
@@ -314,11 +349,9 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             bid_id,
         ),
         HandleMsg::ClaimProceeds {
-            bid_id,
         } => try_claim_proceeds(
             deps,
             env,
-            bid_id,
         )
     };
 

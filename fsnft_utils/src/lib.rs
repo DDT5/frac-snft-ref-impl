@@ -87,6 +87,51 @@ impl HandleCallback for InterContrMsg {
     const BLOCK_SIZE: usize = RESPONSE_BLOCK_SIZE;
 }
 
+/// ftoken contract information, stored in ftoken contracts
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct FtokenInfo {
+    /// ftoken contract instance information, created at initialization
+    pub instance: FtokenInstance,
+    /// is underlying nft still in the vault (ie: fractionalized)
+    pub in_vault: bool,
+}
+
+/// ftoken contract information created at initialization, stored directly in fractionalizer contract, also within
+/// the FtokenInfo struct stored in ftoken contracts
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct FtokenInstance {
+    /// ftoken contract index from the fractionalizer contract's perspective 
+    pub ftkn_idx: u32,
+    /// address which deposited the nft
+    pub depositor: HumanAddr,
+    /// code hash and address of ftoken contract
+    pub ftoken_contr: ContractInfo,
+    /// information on the underlying nft that was initially deposited
+    pub init_nft_info: UndrNftInfo,
+    /// name of ftoken
+    pub name: String,
+    /// symbol of ftoken
+    pub symbol: String,
+    /// decimal of ftoken
+    pub decimals: u8,
+}
+
+/// Part of initialization message sent by USERS to fractionalizer 
+/// initial configuration of fractionalized tokens
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct FtokenInit {  //FtokenConf
+    /// name of the ftoken
+    pub name: String,
+    /// symbol of the ftoken
+    pub symbol: String,
+    /// supply in the lowest denomination
+    pub supply: Uint128,
+    /// determines the lowest denomination
+    pub decimals: u8,
+    /// ftoken config which is stored in the ftoken contract
+    pub ftkn_conf: FtokenConf,
+}
+
 /// Part of information sent from fractionalizer contract to ftoken contract on instantiation tx
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
 pub struct FtokenContrInit {
@@ -98,30 +143,30 @@ pub struct FtokenContrInit {
     pub fract_hash: String,
     /// underlying NFT info
     pub nft_info: UndrNftInfo,
-    /// code hash and address of the allowed bid token (eg: sSCRT)
-    pub bid_token: ContractInfo,
+    /// ftoken config which is stored in the ftoken contract
+    pub ftkn_conf: FtokenConf,
 }
 
-/// ftoken contract information
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct FtokenInfo {
-    /// ftoken contract index from the fractionalizer contract's perspective 
-    pub ftkn_idx: u32,
-    /// address which deposited the nft
-    pub depositor: HumanAddr,
-    /// code hash and address of ftoken contract
-    pub ftoken_contr: ContractInfo,
-    /// information on the underlying nft
-    pub nft_info: UndrNftInfo,
-    /// name of ftoken
-    pub name: String,
-    /// symbol of ftoken
-    pub symbol: String,
-    /// decimal of ftoken
-    pub decimals: u8,
-    /// is underlying nft still in the vault (ie: fractionalized)
-    pub in_vault: bool,
+/// ftoken config which is stored in the ftoken contract. 
+/// Sent as init in fractionalize tx, and stored in ftoken contract 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
+pub struct FtokenConf {
+    pub bid_conf: BidConf,
 }
+
+/// ftoken config for bidding. Nested in a larger struct
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
+pub struct BidConf {
+    /// determines the allowed bid token (eg: sSCRT)
+    pub bid_token: ContractInfo,
+    /// number of blocks that ftokens will be bonded after a vote. Important to prevent vote spamming and manipulation 
+    pub min_ftkn_bond_prd: u64,
+    /// number of blocks that a bid remains live before a finalize_vote_count tx can be called
+    pub bid_period: u64,
+    /// proportion of ftoken-weighted votes before quorum is reached. Unit in basis points (1/1000)
+    pub bid_vote_quorum: Uint128,
+}
+
 
 /// underlying NFT information
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
@@ -141,6 +186,8 @@ pub struct BidsInfo {
     /// amount denominated in the approved bid token
     pub amount: Uint128,
     pub status: BidStatus,
+    /// block height where bid has voting period ends. Final count tx can be called at this point forward
+    pub end_height: u64,
 }
 
 /// Query messages to be sent to SNIP721 contract 
@@ -163,22 +210,6 @@ impl Default for BidStatus {
     fn default() -> Self {
         BidStatus::Active
     }
-}
-
-/// Part of initialization message sent by USERS to fractionalizer 
-/// initial configuration of fractionalized tokens
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct FtokenConf {
-    /// name of the ftoken
-    pub name: String,
-    /// symbol of the ftoken
-    pub symbol: String,
-    /// supply in the lowest denomination
-    pub supply: Uint128,
-    /// determines the lowest denomination
-    pub decimals: u8,
-    /// determines the allowed bid token (eg: sSCRT)
-    pub bid_token: ContractInfo,
 }
 
 /// code hash and address of a contract
