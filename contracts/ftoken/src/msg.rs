@@ -12,11 +12,14 @@ use cosmwasm_std::{
 use secret_toolkit::permit::Permit;
 
 // ftoken additions:
-use fsnft_utils::{FtokenContrInit, FtokenInfo, BidsInfo, FtokenConf};
-use crate::{
-    receiver::Snip20ReceiveMsg,
+use fsnft_utils::{FtokenContrInit, FtokenInfo, FtokenConf};
+// use crate::{
+//     receiver::Snip20ReceiveMsg,
+// };
+use crate::ftoken_mod::{
+    msg::{Proposal},
+    state::{Vote},
 };
-use crate::ftoken_mod::state::Vote;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InitialBalance {
@@ -251,8 +254,9 @@ pub enum HandleMsg {
         /// bid amount denominated in the smallest denomination of the token
         amount: Uint128
     },
-    /// Receiver interface for sSCRT contract's `SendFrom` callback
-    Receive(Snip20ReceiveMsg),
+
+    // /// Receiver interface for sSCRT contract's `SendFrom` callback
+    // Receive(Snip20ReceiveMsg),
     /// Stake ftokens
     Stake {
         amount: Uint128,
@@ -261,28 +265,32 @@ pub enum HandleMsg {
     Unstake {
         amount: Uint128,
     },
-    Vote {
-        bid_id: u32,
+    VoteProposal {
+        prop_id: u32,
         vote: Vote,
     },
-    FinalizeVoteCount {
-        bid_id: u32,
-    },
-    // /// temporary
-    // ChangeBidStatus {
-    //     bid_id: u32,
-    //     status_idx: u8,
-    //     winning_bid: Option<u32>,
-    // },
+    FinalizeAuction { },
     /// Message bidder calls to retrieve underlying NFT after winning a bid
-    RetrieveNft {
-        /// the underlying nft token idx, which can be obtained via query (todo)
-        bid_id: u32,
-    },
-    RetrieveBid {
-        bid_id: u32,
-    },
+    // RetrieveNft {
+    //     /// the underlying nft token idx, which can be obtained via query (todo)
+    //     bid_id: u32,
+    // },
+    RetrieveBid { },
     ClaimProceeds { },
+    Propose {
+        proposal: Proposal,
+        stake: Uint128,
+    },
+    FinalizeExecuteProp {
+        prop_id: u32,
+    },
+    RetrievePropStake {
+        prop_id: u32,
+    },
+    VoteReservationPrice {
+        resv_price: Uint128,
+    }
+
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
@@ -381,6 +389,44 @@ pub enum HandleAnswer {
     RevokePermit {
         status: ResponseStatus,
     },
+
+    // ftoken additions: 
+    BatchReceiveNft {
+        status: ResponseStatus,
+    },
+    Bid {
+        status: ResponseStatus,
+    },
+    Stake {
+        status: ResponseStatus,
+    },
+    Unstake {
+        status: ResponseStatus,
+    },
+    VoteProposal {
+        status: ResponseStatus,
+    },
+    FinalizeAuction {
+        status: ResponseStatus,
+    },
+    RetrieveBid { 
+        status: ResponseStatus,
+    },
+    ClaimProceeds { 
+        status: ResponseStatus,
+    },
+    Propose {
+        status: ResponseStatus,    
+    },
+    FinalizeExecuteProp {
+        status: ResponseStatus,
+    },
+    RetrievePropStake {
+        status: ResponseStatus,
+    },
+    VoteReservationPrice {
+        status: ResponseStatus,
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -506,10 +552,10 @@ pub enum QueryAnswer {
     // temporary for DEBUGGING. Must remove for final implementation
     DebugQAnswer {
         ftokeninfo: FtokenInfo,
-        bids: Vec<BidsInfo>,
-        won_bid: u32,
+        // bids: Vec<BidInfo>,
+        // won_bid: u32,
         ftkn_config: FtokenConf,
-        next_bid_id: u32,
+        next_prop_id: u32,
         nftviewingkey: ViewingKey,
     }
 }

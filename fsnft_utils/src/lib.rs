@@ -1,25 +1,20 @@
-use std::any::{type_name};
-
 use schemars::JsonSchema;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use cosmwasm_std::{
-    HumanAddr, Uint128, Storage, ReadonlyStorage, StdResult, StdError, CosmosMsg, WasmMsg, from_binary,
+    HumanAddr, Uint128, Storage, StdResult, CosmosMsg,
     Binary, Api, Querier, Extern, Env,
 };
 // use cosmwasm_std::testing::{mock_env};  // mock_dependencies, MockStorage, MockApi, MockQuerier,
 
 use secret_toolkit::{
-    serialization::{Json, Serde}, 
-    utils::{Query, HandleCallback}, 
-    snip721::ViewerInfo, 
+    utils::{HandleCallback}, 
 };
 
 pub const RESPONSE_BLOCK_SIZE: usize = 256;
 
 /////////////////////////////////////////////////////////////////////////////////
-// Structs for msgs between fractionalizer and ftoken contracts
+// Intercontract messages
 /////////////////////////////////////////////////////////////////////////////////
-
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -71,6 +66,21 @@ pub enum InterContrMsg{
         memo: Option<String>,
         padding: Option<String>,
     },
+    /// `Transfer` message to send to SNIP20 token address
+    Transfer {
+        recipient: HumanAddr,
+        amount: Uint128,
+        memo: Option<String>,
+        padding: Option<String>,
+    },
+    /// `TransferFrom` message to send to SNIP20 token address
+    TransferFrom {
+        owner: HumanAddr,
+        recipient: HumanAddr,
+        amount: Uint128,
+        memo: Option<String>,
+        padding: Option<String>,
+    }
 }
 
 impl InterContrMsg {
@@ -87,13 +97,63 @@ impl HandleCallback for InterContrMsg {
     const BLOCK_SIZE: usize = RESPONSE_BLOCK_SIZE;
 }
 
+
+/////////////////////////////////////////////////////////////////////////////////
+// States
+/////////////////////////////////////////////////////////////////////////////////
+
+/// ftoken overall config which is stored in the ftoken contract. 
+/// Sent as init in fractionalize tx, and stored in ftoken contract 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
+pub struct FtokenConf {
+    /// number of blocks that ftokens will be bonded after a vote (on reservation
+    /// price or on proposals). Important to prevent vote spamming and manipulation 
+    pub min_ftkn_bond_prd: u64,
+    /// configurations for auctions
+    pub auc_conf: AucConf,
+    // configurations for proposals
+    pub prop_conf: PropConf,
+}
+
+/// ftoken config for bidding. Nested in a larger struct
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
+pub struct AucConf {
+    /// determines the token that bids are made in (eg: sSCRT)
+    pub bid_token: ContractInfo,
+    /// number of blocks that a bid remains live before a finalize_vote_count tx can be called
+    pub auc_period: u64,
+    /// user needs to vote a reservation price within this boundary. Boundary is the percentage above and below
+    /// current reservation price.
+    /// Floor = `current reservation price` * 100 / `minmax_boundary`.
+    /// Ceiling = `current reservation price` * `minmax_boundary` / 100.
+    pub resv_boundary: u32,
+    /// min bid increment proportion in basis points ie: 1/10_000. So a setting of 10 means that if the current highest bid
+    /// is 100_000 tokens, the next bid needs to be at least 1/1000 higher, or 100_100 tokens  
+    pub min_bid_inc: u32,
+    /// proportion of ftoken OF TOTAL SUPPLY before NFT gets unlocked. Unit in basis points (1/1000)
+    pub unlock_threshold: Uint128,
+}
+
+/// ftoken contract config for dao proposals. Nested in a larger struct
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
+pub struct PropConf {
+    /// minimum ftoken stake to make a proposal
+    pub min_stake: Uint128,
+    /// number of blocks that a proposal remains live before a finalization tx can be called
+    pub vote_period: u64,
+    /// proportion of ftoken-weighted votes OF TOTAL SUPPLY before quorum is reached. Unit in basis points (1/1000)
+    pub vote_quorum: Uint128,
+    /// proportion of ftoken-weighted votes OF TOTAL SUPPLY that needs to vote `veto` for a veto to apply. Unit in basis points (1/1000)
+    pub veto_threshold: Uint128,
+}
+
 /// ftoken contract information, stored in ftoken contracts
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct FtokenInfo {
     /// ftoken contract instance information, created at initialization
     pub instance: FtokenInstance,
     /// is underlying nft still in the vault (ie: fractionalized)
-    pub in_vault: bool,
+    pub vault_active: bool,
 }
 
 /// ftoken contract information created at initialization, stored directly in fractionalizer contract, also within
@@ -128,6 +188,9 @@ pub struct FtokenInit {  //FtokenConf
     pub supply: Uint128,
     /// determines the lowest denomination
     pub decimals: u8,
+    /// initial reservation price which determines the initial min and max reservation price vote
+    /// for the first user who votes on reservation price
+    pub init_resv_price: Uint128,
     /// ftoken config which is stored in the ftoken contract
     pub ftkn_conf: FtokenConf,
 }
@@ -143,73 +206,11 @@ pub struct FtokenContrInit {
     pub fract_hash: String,
     /// underlying NFT info
     pub nft_info: UndrNftInfo,
+    /// initial reservation price which determines the initial min and max reservation price vote
+    /// for the first user who votes on reservation price
+    pub init_resv_price: Uint128,
     /// ftoken config which is stored in the ftoken contract
     pub ftkn_conf: FtokenConf,
-}
-
-/// ftoken config which is stored in the ftoken contract. 
-/// Sent as init in fractionalize tx, and stored in ftoken contract 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
-pub struct FtokenConf {
-    pub bid_conf: BidConf,
-}
-
-/// ftoken config for bidding. Nested in a larger struct
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
-pub struct BidConf {
-    /// determines the allowed bid token (eg: sSCRT)
-    pub bid_token: ContractInfo,
-    /// number of blocks that ftokens will be bonded after a vote. Important to prevent vote spamming and manipulation 
-    pub min_ftkn_bond_prd: u64,
-    /// number of blocks that a bid remains live before a finalize_vote_count tx can be called
-    pub bid_period: u64,
-    /// proportion of ftoken-weighted votes before quorum is reached. Unit in basis points (1/1000)
-    pub bid_vote_quorum: Uint128,
-}
-
-
-/// underlying NFT information
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
-pub struct UndrNftInfo {
-    /// token id of underlying nft
-    pub token_id: String,
-    /// contract code hash and address of contract of underlying nft 
-    pub nft_contr: ContractInfo,
-}
-
-/// bids information as stored by ftoken contract
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
-pub struct BidsInfo {
-    /// bid identifier
-    pub bid_id: u32,
-    pub bidder: HumanAddr,
-    /// amount denominated in the approved bid token
-    pub amount: Uint128,
-    pub status: BidStatus,
-    /// block height where bid has voting period ends. Final count tx can be called at this point forward
-    pub end_height: u64,
-}
-
-/// Query messages to be sent to SNIP721 contract 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum BidStatus {
-    /// bid won, and nft has been retrieved
-    WonRetrieved,
-    /// bid won, but nft has not been retrieved
-    WonInVault,
-    /// bid still active
-    Active,
-    /// bid lost, bid amount still in treasury
-    LostInTreasury,
-    /// bid lost, bid amount has been retrieved back from treasury
-    LostRetrieved,    
-}
-
-impl Default for BidStatus {
-    fn default() -> Self {
-        BidStatus::Active
-    }
 }
 
 /// code hash and address of a contract
@@ -221,98 +222,13 @@ pub struct ContractInfo {
     pub address: HumanAddr,
 }
 
-/////////////////////////////////////////////////////////////////////////////////
-// ftoken additions
-/////////////////////////////////////////////////////////////////////////////////
-
-/// Query messages to be sent to SNIP721 contract 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum S721QueryMsg {
-    /// from snip721 contract
-    /// display the owner of the specified token if authorized to view it.  If the requester
-    /// is also the token's owner, the response will also include a list of any addresses
-    /// that can transfer this token.  The transfer approval list is for CW721 compliance,
-    /// but the NftDossier query will be more complete by showing viewing approvals as well
-    OwnerOf {
-        token_id: String,
-        /// optional address and key requesting to view the token owner
-        viewer: Option<ViewerInfo>,
-        /// optionally include expired Approvals in the response list.  If ommitted or
-        /// false, expired Approvals will be filtered out of the response
-        include_expired: Option<bool>,
-    },
-}
-
-impl Query for S721QueryMsg {
-    const BLOCK_SIZE: usize = RESPONSE_BLOCK_SIZE;
-}
-
-
-/////////////////////////////////////////////////////////////////////////////////
-// json save, load and may_load, and remove
-/////////////////////////////////////////////////////////////////////////////////
-
-/// Returns StdResult<()> resulting from saving an item to storage using Json (de)serialization
-/// because bincode2 annoyingly uses a float op when deserializing an enum
-///
-/// # Arguments
-///
-/// * `storage` - a mutable reference to the storage this item should go to
-/// * `key` - a byte slice representing the key to access the stored item
-/// * `value` - a reference to the item to store
-pub fn json_save<T: Serialize, S: Storage>(
-    storage: &mut S,
-    key: &[u8],
-    value: &T,
-) -> StdResult<()> {
-    storage.set(key, &Json::serialize(value)?);
-    Ok(())
-}
-
-/// Returns StdResult<T> from retrieving the item with the specified key using Json
-/// (de)serialization because bincode2 annoyingly uses a float op when deserializing an enum.  
-/// Returns a StdError::NotFound if there is no item with that key
-///
-/// # Arguments
-///
-/// * `storage` - a reference to the storage this item is in
-/// * `key` - a byte slice representing the key that accesses the stored item
-pub fn json_load<T: DeserializeOwned, S: ReadonlyStorage>(storage: &S, key: &[u8]) -> StdResult<T> {
-    Json::deserialize(
-        &storage
-            .get(key)
-            .ok_or_else(|| StdError::not_found(type_name::<T>()))?,
-    )
-}
-
-/// Returns StdResult<Option<T>> from retrieving the item with the specified key using Json
-/// (de)serialization because bincode2 annoyingly uses a float op when deserializing an enum.
-/// Returns Ok(None) if there is no item with that key
-///
-/// # Arguments
-///
-/// * `storage` - a reference to the storage this item is in
-/// * `key` - a byte slice representing the key that accesses the stored item
-pub fn json_may_load<T: DeserializeOwned, S: ReadonlyStorage>(
-    storage: &S,
-    key: &[u8],
-) -> StdResult<Option<T>> {
-    match storage.get(key) {
-        Some(value) => Json::deserialize(&value).map(Some),
-        None => Ok(None),
-    }
-}
-
-/// Removes an item from storage. Named `json_remove` for consistency. Irrelevant
-/// whether it uses json or bincode2 to de/serialize 
-///
-/// # Arguments
-///
-/// * `storage` - a mutable reference to the storage this item is in
-/// * `key` - a byte slice representing the key that accesses the stored item
-pub fn json_remove<S: Storage>(storage: &mut S, key: &[u8]) {
-    storage.remove(key);
+/// underlying NFT information
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
+pub struct UndrNftInfo {
+    /// token id of underlying nft
+    pub token_id: String,
+    /// contract code hash and address of contract of underlying nft 
+    pub nft_contr: ContractInfo,
 }
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -347,55 +263,5 @@ pub fn send_nft_msg<S: Storage, A: Api, Q: Querier>(
     )?;
 
     Ok(cosmos_msg)
-
-    // // create messages
-    // let messages = vec![cosmos_msg];
-
-    // Ok(HandleResponse {
-    //     messages,
-    //     log: vec![],
-    //     data: None
-    // })
 }
 
-
-/////////////////////////////////////////////////////////////////////////////////
-// multi unit test helpers
-/////////////////////////////////////////////////////////////////////////////////
-
-/// Serialized then deserializes a struct into / from json. Simulates a cosmos message being 
-/// sent between contracts. Used for unit tests 
-pub fn json_ser_deser<T: Serialize, U: DeserializeOwned>(value: &T) -> StdResult<U> {
-    let ser = Json::serialize(value)?;
-    let deser: U = Json::deserialize(&ser)?;
-    Ok(deser)
-}
-
-/// extracts the msg from a CosmosMsg. uses DeserializedOwned, so you need to specify the type
-/// when declaring the variable.
-/// # Usage
-/// let var: `type here` = extract_cosmos_msg(&message).unwrap();
-pub fn extract_cosmos_msg<U: DeserializeOwned>(message: &CosmosMsg) -> StdResult<U> {
-    // let mut decode: String; 
-    let msg = match message {
-        CosmosMsg::Wasm(i) => match i {
-            WasmMsg::Execute{msg, ..} => msg,
-            WasmMsg::Instantiate {msg, ..} => msg,
-        },
-        _ => return Err(StdError::generic_err("unable to extract msg from CosmosMsg"))
-    };
-    let decoded: U = from_binary(&msg).unwrap();
-    Ok(decoded)
-}
-
-
-// pub fn more_mock_env(
-//     sender: HumanAddr,
-//     contract_addr: Option<HumanAddr>,
-//     contract_code_hash: Option<String>,
-// ) -> Env {
-//     let mut env = mock_env(sender, &[]);
-//     if let Some(i) = contract_addr { env.contract.address = i }
-//     if let Some(i) = contract_code_hash { env.contract_code_hash = i }
-//     env
-// }

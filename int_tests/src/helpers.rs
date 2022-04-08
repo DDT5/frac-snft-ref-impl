@@ -3,28 +3,27 @@ use std::{
     ops::Mul, 
     collections::HashMap};
 
+use serde::de::DeserializeOwned;
+
 use cosmwasm_std::{
     InitResponse, HandleResponse, StdResult, StdError,
     Extern, HumanAddr, Uint128, Binary, Env, Api,
     testing::{
         mock_dependencies, mock_env, MockStorage, MockApi, MockQuerier
     }, 
+    CosmosMsg, WasmMsg, from_binary, to_binary,
+    MemoryStorage, Storage, ReadonlyStorage, 
 };
 
-use fractionalizer::{
-    contract as frc, 
-    msg::{
-        InitMsg as FrcInitMsg, HandleMsg as FrcHandleMsg,
-    }, 
-    // msg as frc_msg,
-    state::{
-        UploadedFtkn as FrcUploadedFtkn, 
-    },
-};
+use cosmwasm_storage::{StorageTransaction, transactional};
+
+use fractionalizer as frc;
 
 use ftoken as ft;
 use ftoken::{
-    msg as ft_msg, 
+    ftoken_mod::{
+        state::{agg_resv_price_w, agg_resv_price_r, ResvVote}
+    }
 };
 
 // use secret_toolkit::utils::space_pad;
@@ -33,7 +32,7 @@ use snip721_reference_impl as s721;
 use snip20_reference_impl as s20;
 
 use fsnft_utils::{
-    UndrNftInfo, ContractInfo, FtokenInit, FtokenConf, extract_cosmos_msg, BidConf
+    UndrNftInfo, ContractInfo, FtokenInit, FtokenConf, AucConf, PropConf
 }; 
 
 
@@ -56,6 +55,7 @@ pub(crate) struct App {
 impl App {
     /// Helper method to initialize App and add addresses in the `addrs` HashMap
     /// * SNIP20 ("sSCRT") contract: `s20_addr` and `s20_hash`
+    /// * Another SNIP20 ("SHD") contract: `shd_addr` and `shd_hash`
     /// * SNIP721 ("NFT") contract: `s721_addr` and `s721_hash`
     /// * Fractionalizer: `frc_addr` and `frc_hash`
     /// * ftoken: `ft_addr` and `ft_hash`
@@ -86,6 +86,11 @@ impl App {
         self.addrs.insert("s20".to_string(), ContractInfo { 
             code_hash: "s20_hash".to_string(), 
             address: HumanAddr("s20_addr".to_string())
+        });
+        // Another SNIP20 contract address
+        self.addrs.insert("shd".to_string(), ContractInfo { 
+            code_hash: "shd_hash".to_string(), 
+            address: HumanAddr("shd_addr".to_string())
         });
         // SNIP721 contract address
         self.addrs.insert("s721".to_string(), ContractInfo { 
@@ -139,8 +144,31 @@ impl App {
         self.env.block.height += count;
         self.env.block.time += 5.mul(count);
     }
-}
 
+    // fn key_from_value(map: &HashMap<String, ContractInfo>, value: ContractInfo) -> Option<&String> {
+    //     map.iter()
+    //         .find_map(|(key, &val)| if val == value { Some(key) } else { None })
+    // }
+
+    // fn key_of_sender(&self) -> &String {
+    //     let address = self.env.message.sender.clone();
+    //     let res = self.addrs.iter()
+    //         .find_map(|(key, val)| if val.address == address { Some(key) } else { None });
+    //     match res {
+    //         Some(i) => return i,
+    //         None => panic!("app.key_of_sender: no key associated with address"),
+    //     }
+    // }
+    fn key_of_sender(&self) -> String {
+        let address = self.env.message.sender.clone();
+        let res = self.addrs.iter()
+            .find_map(|(key, val)| if val.address == address { Some(key) } else { None });
+        match res {
+            Some(i) => return i.to_string(),
+            None => panic!("app.key_of_sender: no key associated with address"),
+        }
+    }
+}
 
 
 
@@ -208,20 +236,29 @@ pub(crate) fn fractionalize_default(app: &mut App) {
         token_id: "MyNFT".to_string(),
         nft_contr: app.get_addr("s721"),
     };
-    let handle_msg = FrcHandleMsg::Fractionalize {
+    let handle_msg = frc::msg::HandleMsg::Fractionalize {
         nft_info: nft_info.clone(),
         ftkn_init: FtokenInit {
             name: "myftoken".to_string(),
             symbol: "TKN".to_string(),
             supply: Uint128(100),
             decimals: 6u8,
+            init_resv_price: Uint128(500),
             ftkn_conf: FtokenConf {
-                bid_conf: BidConf {
+                min_ftkn_bond_prd: 10u64,
+                auc_conf: AucConf {
                     bid_token: app.get_addr("s20"),
-                    min_ftkn_bond_prd: 10u64,
-                    bid_period: 100,
-                    bid_vote_quorum: Uint128(1000),
-                }
+                    auc_period: 100,
+                    resv_boundary: 500,
+                    min_bid_inc: 1000u32,
+                    unlock_threshold: Uint128(5_000),
+                },
+                prop_conf: PropConf { 
+                    min_stake: Uint128(2),
+                    vote_period: 200, 
+                    vote_quorum: Uint128(2000), 
+                    veto_threshold: Uint128(1000), 
+                },
             },
         },
     };
@@ -272,12 +309,16 @@ pub(crate) fn transfer_ftkn_and_stake(
 /// Simulates calling "fractionalize" handle function, with the cross-contract calls 
 pub(crate) fn sim_fractionalize(
     app: &mut App,
-    handle_msg: FrcHandleMsg,
+    handle_msg: frc::msg::HandleMsg,
 ) -> StdResult<()> {
+    // save current environment, to revert back at the end
+    let prev_env = app.env.clone();
+
+
     // call fractionalize handle on fract contract -----------------------------------
     app.change_env("user0", "frc");
     
-    let handle_resp = frc::handle(&mut app.deps, app.env.clone(), handle_msg).unwrap();
+    let handle_resp = frc::contract::handle(&mut app.deps, app.env.clone(), handle_msg).unwrap();
     // check there are two messages in the response
     assert_eq!(handle_resp.messages.len(), 2);
 
@@ -288,7 +329,7 @@ pub(crate) fn sim_fractionalize(
 
     // message1: contract-to-contract call init function on ftoken contract --------
     app.change_env("frc", "ft");
-    let msg: ft_msg::InitMsg = extract_cosmos_msg(&handle_resp.messages[1]).unwrap();
+    let msg = extract_cmsg_check_env::<ft::msg::InitMsg>(&app, &handle_resp.messages[1]).unwrap();
     let ft_init_resp = ft::contract::init(&mut app.deps, app.env.clone(), msg).unwrap();
 
     // check there are two messages in the response
@@ -296,8 +337,8 @@ pub(crate) fn sim_fractionalize(
 
     // message0: contract-to-contract call ftoken init response -> fractionalizer handle ---
     app.change_env("ft", "frc");
-    let msg: FrcHandleMsg = extract_cosmos_msg(&ft_init_resp.messages[0]).unwrap(); 
-    let handle_resp = frc::handle(&mut app.deps, app.env.clone(), msg).unwrap();
+    let msg = extract_cmsg_check_env::<frc::msg::HandleMsg>(&app, &ft_init_resp.messages[0]).unwrap(); 
+    let handle_resp = frc::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
 
     // check there is one message in the response
     assert_eq!(handle_resp.messages.len(), 1);
@@ -308,9 +349,13 @@ pub(crate) fn sim_fractionalize(
 
     // fractionalizer -> SNIP721 `SendNft` handle ----------------------------------
     app.change_env("frc", "s721");
-    let msg: s721::msg::HandleMsg = extract_cosmos_msg(&handle_resp.messages[0]).unwrap();
+    let msg = extract_cmsg_check_env::<s721::msg::HandleMsg>(&app, &handle_resp.messages[0]).unwrap();
     let handle_resp = s721::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
     assert_eq!(handle_resp.messages.len(), 0);
+
+
+    // revert to previous environment
+    app.env = prev_env;
 
     Ok(())
 }
@@ -318,11 +363,22 @@ pub(crate) fn sim_fractionalize(
 /// Simulates calling `Bid` on ftoken contract, with the inter-contract messages
 /// # Arguments
 /// * `amount` - amount of ftokens to transfer. In u128, will be converted to Uint128 in this function
+/// * `sender` - the key associated with the sender's address stored in `App`. If `None`, uses current `env`
 pub(crate) fn sim_bid(
     app: &mut App,
     amount: u128,
-    sender: &str,
-) -> StdResult<()> { 
+    sender_op: Option<&str>,
+) -> StdResult<HandleResponse> { 
+    // save current environment, to revert back at the end
+    let prev_env = app.env.clone();
+
+    // determine sender
+    let sender = match sender_op {
+        Some(i) => i.to_string(),
+        None => app.key_of_sender(),
+    };
+    let sender = sender.as_str();
+
     // first give allowance to ftoken contract to spend snip20 tokens
     app.change_env(sender, "s20");
     let msg = s20::msg::HandleMsg::IncreaseAllowance { 
@@ -347,81 +403,118 @@ pub(crate) fn sim_bid(
     // let exp_resp_data_bin = space_pad(&mut exp_resp_data_bin, 256usize);
     // assert_eq!(resp_data_bin, *exp_resp_data_bin);
 
-    // user2 makes bid
+    // sender makes bid
     app.change_env(sender, "ft");
     let msg = ft::msg::HandleMsg::Bid { amount: Uint128(amount) };
-    let handle_resp = ft::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
-    assert_eq!(handle_resp.messages.len(), 1);
-
-    // message0: ftoken contract -> `SendFrom` to snip20 contract
-    app.change_env("ft", "s20");
-    let msg: s20::msg::HandleMsg = extract_cosmos_msg(&handle_resp.messages[0]).unwrap();
-    let handle_resp =s20::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
-    assert_eq!(handle_resp.messages.len(), 1);
-
-    // message0: s20 contract -> `Receive` to ftoken contract
-    app.change_env("s20", "ft");
-    let msg: ft::msg::HandleMsg = extract_cosmos_msg(&handle_resp.messages[0]).unwrap();
-    let handle_resp =ft::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
-    assert_eq!(handle_resp.messages.len(), 0);
-    
-    Ok(())
-}
-
-pub(crate) fn sim_retrieve_bid(
-    app: &mut App,
-    bid_id: u32,
-    sender: &str,
-) -> StdResult<HandleResponse>{
-    app.change_env(sender, "ft");
-    let msg = ft::msg::HandleMsg::RetrieveBid { bid_id };
     let handle_resp = ft::contract::handle(&mut app.deps, app.env.clone(), msg)?;
     assert_eq!(handle_resp.messages.len(), 1);
 
-    // message0: ftoken contract -> `Send` to snip20 contract
+    // message0: ftoken contract -> `TransferFrom` to snip20 contract
     app.change_env("ft", "s20");
-    let msg: s20::msg::HandleMsg = extract_cosmos_msg(&handle_resp.messages[0]).unwrap();
-    let handle_resp =s20::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
-    assert_eq!(handle_resp.messages.len(), 0);
+    let msg = extract_cmsg_check_env::<s20::msg::HandleMsg>(&app, &handle_resp.messages[0]).unwrap();
+    let handle_resp_0 =s20::contract::handle(&mut app.deps, app.env.clone(), msg)?;
+    assert_eq!(handle_resp_0.messages.len(), 0);
 
-    Ok(HandleResponse::default())
+    // revert to previous environment
+    app.env = prev_env;
+    
+    Ok(handle_resp)
 }
 
-/// simulates `RetrieveNft` function on ftoken contract
-pub(crate) fn sim_retrieve_nft(
+/// simulates `FinalizeAuction` function on ftoken contract
+pub(crate) fn sim_finalize_auction(
     app: &mut App,
-    bid_id: u32,
-    sender: &str,
 ) -> StdResult<HandleResponse> {
+    // save current environment, to revert back at the end
+    let prev_env = app.env.clone();
+
+    let sender = app.key_of_sender();
+    let sender = sender.as_str();
+
+    // sender called finalization tx
     app.change_env(sender, "ft");
-    let msg = ft::msg::HandleMsg::RetrieveNft { bid_id };
+    let msg = ft::msg::HandleMsg::FinalizeAuction {  };
     let handle_resp = ft::contract::handle(&mut app.deps, app.env.clone(), msg)?;
     assert_eq!(handle_resp.messages.len(), 1);
 
     // ftoken -> SNIP721 `SendNft` handle -----------------------------------------
     app.change_env("ft", "s721");
-    let msg: s721::msg::HandleMsg = extract_cosmos_msg(&handle_resp.messages[0]).unwrap();
-    let handle_resp = s721::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
+    let msg = extract_cmsg_check_env::<s721::msg::HandleMsg>(&app, &handle_resp.messages[0]).unwrap();
+    let handle_resp_0 = s721::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
+    assert_eq!(handle_resp_0.messages.len(), 0);
+
+    // revert to previous environment
+    app.env = prev_env;
+    
+    Ok(handle_resp)
+}
+
+pub(crate) fn sim_retrieve_bid(
+    app: &mut App,
+    sender: &str,
+) -> StdResult<HandleResponse>{
+    // save current environment, to revert back at the end
+    let prev_env = app.env.clone();
+
+    app.change_env(sender, "ft");
+    let msg = ft::msg::HandleMsg::RetrieveBid { };
+    let handle_resp = ft::contract::handle(&mut app.deps, app.env.clone(), msg)?;
+    assert_eq!(handle_resp.messages.len(), 1);
+
+    // message0: ftoken contract -> `Transfer` to snip20 contract
+    app.change_env("ft", "s20");
+    let msg = extract_cmsg_check_env::<s20::msg::HandleMsg>(&app, &handle_resp.messages[0]).unwrap();
+    let handle_resp =s20::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
     assert_eq!(handle_resp.messages.len(), 0);
+
+    // revert to previous environment
+    app.env = prev_env;
 
     Ok(HandleResponse::default())
 }
+
+/// simulates `RetrieveNft` function on ftoken contract
+// pub(crate) fn sim_retrieve_nft(
+//     app: &mut App,
+//     bid_id: u32,
+//     sender: &str,
+// ) -> StdResult<HandleResponse> {
+//     app.change_env(sender, "ft");
+//     let msg = ft::msg::HandleMsg::RetrieveNft { bid_id };
+//     let handle_resp = ft::contract::handle(&mut app.deps, app.env.clone(), msg)?;
+//     assert_eq!(handle_resp.messages.len(), 1);
+
+//     // ftoken -> SNIP721 `SendNft` handle -----------------------------------------
+//     app.change_env("ft", "s721");
+//     let msg: s721::msg::HandleMsg = extract_cosmos_msg(&handle_resp.messages[0]).unwrap();
+//     let handle_resp = s721::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
+//     assert_eq!(handle_resp.messages.len(), 0);
+
+//     Ok(HandleResponse::default())
+// }
 
 /// simulates `ClaimProceeds` function on ftoken contract
 pub(crate) fn sim_claim_proceeds(
     app: &mut App,
     sender: &str,
 ) -> StdResult<HandleResponse> {
+    // save current environment, to revert back at the end
+    let prev_env = app.env.clone();
+
+
     app.change_env(sender, "ft");
     let msg = ft::msg::HandleMsg::ClaimProceeds { };
     let handle_resp = ft::contract::handle(&mut app.deps, app.env.clone(), msg)?;
     assert_eq!(handle_resp.messages.len(), 1);
 
-    // message0: ftoken contract -> `Send` to snip20 contract
+    // message0: ftoken contract -> `Transfer` to snip20 contract
     app.change_env("ft", "s20");
-    let msg: s20::msg::HandleMsg = extract_cosmos_msg(&handle_resp.messages[0]).unwrap();
+    let msg = extract_cmsg_check_env::<s20::msg::HandleMsg>(&app, &handle_resp.messages[0]).unwrap();
     let handle_resp =s20::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
     assert_eq!(handle_resp.messages.len(), 0);
+
+    // revert to previous environment
+    app.env = prev_env;
 
     Ok(HandleResponse::default())
 }
@@ -431,15 +524,81 @@ pub(crate) fn sim_claim_proceeds(
 // Private helper functions
 /////////////////////////////////////////////////////////////////////////////////
 
+// /// Serialized then deserializes a struct into / from json. Simulates a cosmos message being 
+// /// sent between contracts. Used for unit tests 
+// pub fn json_ser_deser<T: Serialize, U: DeserializeOwned>(value: &T) -> StdResult<U> {
+//     let ser = Json::serialize(value)?;
+//     let deser: U = Json::deserialize(&ser)?;
+//     Ok(deser)
+// }
+
+
+/// Extracts the msg from a CosmosMsg and checks that the current `env.message.sender` 
+/// and `env.contract_code_hash` in the App are correct. Uses DeserializedOwned, so you 
+/// sometimes need to specify the type when declaring the variable.
+/// # Usage
+/// ```
+/// let mut app = App::new();
+/// app.change_env("user0", "ft");
+/// let msg = extract_cmsg_check_env::<HandleMsg>(&app, &message).unwrap();
+/// ```
+fn extract_cmsg_check_env<U: DeserializeOwned>(app: &App, message: &CosmosMsg) -> StdResult<U> {
+    let (msg, addr_op, hash) = extract_cosmos_msg(&message).unwrap();
+
+    // If `None` means the message is `WasmMsg::Instantiate`
+    match addr_op {
+        Some(addr) => {
+            if &app.env.contract.address != addr {
+                return Err(StdError::generic_err(format!(
+                    "extract_cmsg_check_env: receiving contract address is incorrect. 
+                    Addr in app: {}, addr in msg: {}", app.env.message.sender, addr
+                )))
+            }
+        },
+        None => (),
+    }
+    if &app.env.contract_code_hash != hash {
+        return Err(StdError::generic_err(format!(
+            "extract_cmsg_check_env: receiving contract code hash is incorrect.
+            Hash in app: {}, hash in msg: {}", app.env.contract_code_hash, hash
+        )))
+    }
+
+    Ok(msg)
+}
+
+/// Extracts info from a CosmosMsg. Uses DeserializedOwned, so you 
+/// sometimes need to specify the type when declaring the variable.
+/// # Usage
+/// ```no_run
+/// let (msg, addr_op, hash) = extract_cosmos_msg::<HandleMsg>(&message).unwrap();
+/// ```
+fn extract_cosmos_msg<U: DeserializeOwned>(message: &CosmosMsg) -> StdResult<(U, Option<&HumanAddr>, &String)> {
+    let (reciever_addr, receiver_hash, msg) = match message {
+        CosmosMsg::Wasm(i) => match i {
+            WasmMsg::Execute{contract_addr, callback_code_hash, msg, ..
+            } => (Some(contract_addr), callback_code_hash, msg),
+            WasmMsg::Instantiate { callback_code_hash, msg, .. } => (None, callback_code_hash, msg),
+        },
+        _ => return Err(StdError::generic_err("unable to extract msg from CosmosMsg"))
+    };
+    let decoded_msg: U = from_binary(&msg).unwrap();
+    Ok((decoded_msg, reciever_addr, receiver_hash))
+}
+
+
+
 fn frc_init_helper_default(app: &mut App) -> StdResult<InitResponse> {
     app.change_env("user0", "frc");
 
-    let init_msg = FrcInitMsg {
-        uploaded_ftoken: FrcUploadedFtkn::default(),
-        bid_token: ContractInfo::default(),
+    let init_msg = frc::msg::InitMsg {
+        uploaded_ftoken: frc::state::UploadedFtkn {
+            code_id: 0u64,
+            code_hash: "ft_hash".to_string(),
+        },
     };
 
-    frc::init(&mut app.deps, app.env.clone(), init_msg)
+    frc::contract::init(&mut app.deps, app.env.clone(), init_msg)
 }
 
 fn s20_init_helper_default(
@@ -563,5 +722,128 @@ fn s721_mint_nft_and_approve(
     assert!(handle_result.is_ok());
     Ok(())
 }
+
+/////////////////////////////////////////////////////////////////////////////////
+// misc unit tests
+/////////////////////////////////////////////////////////////////////////////////
+
+#[test]
+fn test_decode() {
+    #[derive(PartialEq, Debug)]
+    struct TransferStruct {
+        recipient: HumanAddr,
+        amount: Uint128,
+        memo: Option<String>,
+        padding: Option<String>,
+    }
+
+    let msg0 = ft::msg::HandleMsg::Transfer { 
+        recipient: HumanAddr("dear_recipient".to_string()), 
+        amount: Uint128(1298), 
+        memo: Some("this is a special memo".to_string()),
+        padding: None, 
+    };
+    let message0: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: HumanAddr("contract".to_string()),
+        callback_code_hash: "contract_hash".to_string(),
+        msg: to_binary(&msg0).unwrap(),
+        send: vec![],
+    });
+
+    let (decoded0, _, _) = extract_cosmos_msg::<s20::msg::HandleMsg>(&message0).unwrap();
+    let exp_decoded0_struct = TransferStruct {
+        recipient: HumanAddr("dear_recipient".to_string()), 
+        amount: Uint128(1298), 
+        memo: Some("this is a special memo".to_string()),
+        padding: None,
+    };
+    let decoded0_struct = match decoded0 {
+        s20::msg::HandleMsg::Transfer { recipient, amount, memo, padding 
+        } => TransferStruct { recipient, amount, memo, padding },
+        _ => panic!("decoded0_struct code not be formed")
+    };
+
+    assert_eq!(decoded0_struct, exp_decoded0_struct);    
+
+    // let message1 = msg1.to_cosmos_msg(
+    //     "contract_hash".to_string(),
+    //     HumanAddr("contract".to_string()),
+    //     None
+    // );
+    // let _decoded1: ft::msg::HandleMsg = extract_cosmos_msg(&message1.unwrap()).unwrap();
+    // println!("The decoded CosmosMsg1 is: {:?}", extract_cosmos_msg::<InterContrMsg>(&message1.unwrap()).unwrap());
+}
+
+#[test]
+fn test_transaction_storage() {
+    // let mut base = MemoryStorage::new();
+    let deps = mock_dependencies(20, &[]);
+    let mut base = deps.storage;
+    base.set(b"foo", b"bar");
+
+    let mut check = StorageTransaction::new(&base);
+    assert_eq!(check.get(b"foo"), Some(b"bar".to_vec()));
+    check.set(b"subtx", b"works");
+    check.prepare().commit(&mut base);
+
+    assert_eq!(base.get(b"subtx"), Some(b"works".to_vec()));
+}
+
+#[test]
+fn transactional_works() {
+    let mut base = MemoryStorage::new();
+    
+    fn test_success<S: Storage>(
+        storage: &mut S,
+        id: u128,
+    ) -> StdResult<String> {
+        let resv_vote = ResvVote::new(
+            Uint128(id),
+            Uint128(id.mul(10)),
+        );
+        agg_resv_price_w(storage).save(&resv_vote)?;
+        Ok("a success msg".to_string())
+    }
+
+    fn test_fail<S: Storage>(
+        storage: &mut S,
+        id: u128,
+    ) -> StdResult<String> {
+        let resv_vote = ResvVote::new(
+            Uint128(id),
+            Uint128(id.mul(10)),
+        );
+        agg_resv_price_w(storage).save(&resv_vote)?;
+        let trans_agg_resv = agg_resv_price_r(storage).load().unwrap();
+        // println!("trans_agg_resv: {:?}", trans_agg_resv);
+        assert_eq!(trans_agg_resv, ResvVote::new(
+            Uint128(12),
+            Uint128(120),
+        ));
+        Err(StdError::generic_err("an error msg"))
+    }
+
+    let res = transactional(&mut base, |store| test_success(store, 5u128));
+    // println!("res: {:?}", res);
+    let agg_resv = agg_resv_price_r(&base).load().unwrap();
+    // println!("agg_resv: {:?}", agg_resv);
+    assert_eq!(res, Ok("a success msg".to_string()));
+    assert_eq!(agg_resv, ResvVote::new(
+        Uint128(5),
+        Uint128(50),
+    ));
+
+    let res_fail = transactional(&mut base, |store| test_fail(store, 12u128));
+    // println!("res: {:?}", res_fail);
+    let agg_resv_fail = agg_resv_price_r(&base).load().unwrap();
+    // println!("agg_resv_fail: {:?}", agg_resv_fail);
+    assert_eq!(res_fail, Err(StdError::generic_err("an error msg")));
+    assert_eq!(agg_resv_fail, ResvVote::new(
+        Uint128(5),
+        Uint128(50),
+    ));
+
+}
+
 
 

@@ -230,6 +230,7 @@ fn instantiate_ftoken_contr_msg<S: Storage, A: Api, Q: Querier>(
             fract_hash: env.contract_code_hash,
             nft_info,
             ftkn_conf: ftkn_init.ftkn_conf,
+            init_resv_price: ftkn_init.init_resv_price,
         },
         name: ftkn_init.name,
         admin: None,

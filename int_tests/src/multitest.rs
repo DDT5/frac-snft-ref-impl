@@ -1,12 +1,7 @@
 use cosmwasm_std::{
-    HumanAddr, Uint128, to_binary, CosmosMsg, WasmMsg,
-    testing::{
-        mock_env,
-    }, 
+    Uint128, to_binary, 
     Api,
 };
-
-use secret_toolkit::utils::{HandleCallback};
 
 use cosmwasm_storage::ReadonlyPrefixedStorage;
 
@@ -35,13 +30,13 @@ use snip721_reference_impl::{
 // use snip20_reference_impl as s20;
 
 use fsnft_utils::{
-    UndrNftInfo, FtokenInfo, FtokenInstance, extract_cosmos_msg, InterContrMsg, BidStatus, BidsInfo, 
+    UndrNftInfo, FtokenInfo, FtokenInstance, AucConf, // FtokenInit, FtokenConf, AucConf, PropConf,
 };
 
 use crate::helpers::{
     App, extract_error_msg,
-    init_default, fractionalize_default, ftoken_balance, s20_balance, sim_bid, transfer_ftkn_and_stake, sim_retrieve_nft, 
-    sim_retrieve_bid, sim_claim_proceeds,
+    init_default, fractionalize_default, ftoken_balance, s20_balance, transfer_ftkn_and_stake, sim_bid, 
+    sim_finalize_auction, sim_retrieve_bid, sim_claim_proceeds,
 };
 
 
@@ -105,7 +100,7 @@ fn frac_default_sanity() {
             symbol: "TKN".to_string(),
             decimals: 6u8,
         },
-        in_vault: true,
+        vault_active: true,
     };
     assert_eq!(ft_ftkn_info, exp_ft_ftkn_info);
 
@@ -220,147 +215,312 @@ fn test_transfer_ftokens_sanity() {
 }
 
 #[test]
-fn test_bidding_retrievenft_forced() {
-    let mut app = App::new();
-    init_default(&mut app);
-    fractionalize_default(&mut app);
-    sim_bid(&mut app, 2_000, "user2").unwrap();
-    transfer_ftkn_and_stake(&mut app, "user0", "user1", 30, 0, 0).unwrap();
-
-    // check bid_info is correct
-    let mut exp_bid_info = BidsInfo {
-        bid_id: 0u32,
-        bidder: app.get_addr("user2").address,
-        amount: Uint128(2_000),
-        status: BidStatus::Active,
-        end_height: 100u64,
-    };
-    let mut bid_info_0 = bids_r(&app.deps.storage).load(&0u32.to_le_bytes()).unwrap();
-    assert_eq!(bid_info_0, exp_bid_info);
-    assert_eq!(Uint128(3_000), s20_balance(&mut app, "user2"));
-
-    // user2 can make another bid
-    sim_bid(&mut app, 3_000, "user2").unwrap();
-    exp_bid_info.bid_id = 1u32;
-    exp_bid_info.amount = Uint128(3_000);
-    let mut bid_info_1 = bids_r(&app.deps.storage).load(&1u32.to_le_bytes()).unwrap();
-    assert_eq!(bid_info_1, exp_bid_info);
-    // user2 now has zero s20 (sscrt) token balance
-    assert_eq!(Uint128(0), s20_balance(&mut app, "user2"));
-
-    // user2 cannot retrieve nft
-    let handle_result = sim_retrieve_nft(&mut app, 0u32, "user2");
-    let error = extract_error_msg(handle_result);
-    assert!(error.contains("Cannot retrieve underlying NFT: bid status is not `WonInVault`"));
-
-    // forcefully change bid_status of bid_id: 0. user2 cannot `RetrieveNft`
-    let status_vec = vec![BidStatus::WonRetrieved, BidStatus::Active, BidStatus::LostInTreasury, BidStatus::LostRetrieved];
-    for status in status_vec.iter() {
-        bid_info_0.status = status.clone();
-        bids_w(&mut app.deps.storage).save(&0u32.to_le_bytes(), &bid_info_0).unwrap();
-        let handle_result = sim_retrieve_nft(&mut app, 0u32, "user2");
-        let error = extract_error_msg(handle_result);
-        assert!(error.contains("Cannot retrieve underlying NFT: bid status is not `WonInVault`"));
-    }
-    
-    // forcefully change bid_status of bid_id: 0 to `WonInVault`, and `won_bid_id` = 0:
-    won_bid_id_w(&mut app.deps.storage).save(&0u32).unwrap(); 
-    // other (user1) cannot retrieve...
-    bid_info_0.status = BidStatus::WonInVault;
-    bids_w(&mut app.deps.storage).save(&0u32.to_le_bytes(), &bid_info_0).unwrap();
-    let handle_result = sim_retrieve_nft(&mut app, 0u32, "user1");
-    let error = extract_error_msg(handle_result);
-    assert!(error.contains("Cannot retrieve underlying NFT: You are not the bidder"));
-
-    // ...user2 can retrieve nft
-    let handle_result = sim_retrieve_nft(&mut app, 0u32, "user2");
-    assert!(handle_result.is_ok());
-    // user2 now has NFT
-    let token: s721::token::Token = json_load(
-        &ReadonlyPrefixedStorage::new(PREFIX_INFOS, &app.deps.storage), &0u32.to_le_bytes()
-    ).unwrap();
-    assert_eq!(app.deps.api.human_address(&token.owner).unwrap(), app.get_addr("user2").address);
-    // user2 still has zero s20 (sscrt) token balance
-    assert_eq!(Uint128(0), s20_balance(&mut app, "user2"));
-
-    // forcefully change bid_status of bid_id: 1. user2 cannot `RetrieveBid`
-    let status_vec = vec![BidStatus::WonRetrieved, BidStatus::WonInVault, BidStatus::Active, BidStatus::LostRetrieved];
-    for status in status_vec.iter() {
-        bid_info_1.status = status.clone();
-        bids_w(&mut app.deps.storage).save(&1u32.to_le_bytes(), &bid_info_1).unwrap();
-        let handle_result = sim_retrieve_bid(&mut app, 1u32, "user2");
-        let error = extract_error_msg(handle_result);
-        assert!(error.contains("Cannot retrieve bid tokens: bid status is not `LostInTreasury`"));
-    }
-    // forcefully change bid_status of bid_id: 1 to `LostInTreasury`: 
-    // other (user1) cannot retrieve...
-    bid_info_1.status = BidStatus::LostInTreasury;
-    bids_w(&mut app.deps.storage).save(&1u32.to_le_bytes(), &bid_info_1).unwrap();
-    let handle_result = sim_retrieve_bid(&mut app, 1u32, "user1");
-    let error = extract_error_msg(handle_result);
-    assert!(error.contains("Cannot retrieve bid tokens: You are not the bidder"));
-    
-    // ...user2 can retrieve bid
-    let handle_result = sim_retrieve_bid(&mut app, 1u32, "user2");
-    assert!(handle_result.is_ok());
-    // user2 now has 3000 s20 (sscrt) token balance
-    assert_eq!(Uint128(3_000), s20_balance(&mut app, "user2"));
-
-    // user0 and user1 can claim pro-rata sale proceeds 
-    assert_eq!(Uint128(5_000), s20_balance(&mut app, "user0"));
-    assert_eq!(Uint128(5_000), s20_balance(&mut app, "user1"));
-    sim_claim_proceeds(&mut app, "user0").unwrap();
-    sim_claim_proceeds(&mut app, "user1").unwrap();
-    assert_eq!(Uint128(5_000 + 70*2_000/100), s20_balance(&mut app, "user0"));
-    assert_eq!(Uint128(5_000 + 30*2_000/100), s20_balance(&mut app, "user1"));
-}
-
-#[test]
-fn test_bid_votes() {
+fn test_auction_process() {
     let mut app = App::new();
     init_default(&mut app);
     fractionalize_default(&mut app);
     transfer_ftkn_and_stake(&mut app, "user0", "user1", 30, 70, 30).unwrap();
-    sim_bid(&mut app, 2_000, "user2").unwrap();
-    // todo
 
-    // // unstake ftokens
-    // app.change_env("user0", "ft");
-    // let msg = ft::msg::HandleMsg::Unstake { amount: Uint128(70) };
-    // ft::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
+    app.change_env("user1", "ft");
+    let mut msg = ft::msg::HandleMsg::VoteReservationPrice { resv_price: Uint128(99) };
+    let mut error = extract_error_msg(ft::contract::handle(&mut app.deps, app.env.clone(), msg));
+    assert!(error.contains("Reserve price out of bounds. Please set between "));
 
-    // app.change_env("user1", "ft");
-    // let msg = ft::msg::HandleMsg::Unstake { amount: Uint128(30) };
-    // ft::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
+    msg = ft::msg::HandleMsg::VoteReservationPrice { resv_price: Uint128(2501) };
+    error = extract_error_msg(ft::contract::handle(&mut app.deps, app.env.clone(), msg));
+    assert!(error.contains("Reserve price out of bounds. Please set between "));
 
+    msg = ft::msg::HandleMsg::VoteReservationPrice { resv_price: Uint128(100) };
+    ft::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
+    let mut agg_resv_price = agg_resv_price_r(&app.deps.storage).load().unwrap();
+    assert_eq!(agg_resv_price.uint128_price(), Uint128(100));
+
+    // cannot bid because token not yet unlocked
+    error = extract_error_msg(sim_bid(&mut app, 1000, None));
+    assert!(error.contains("vault is not unlocked. Unlock threshold is "));
+
+    // user0 votes on reservation price too
+    // add blocks to later test that this tx should increase the bonding period of ftokens
+    app.next_block(5);
+    app.change_env("user0", "ft");
+    msg = ft::msg::HandleMsg::VoteReservationPrice { resv_price: Uint128(50) };
+    ft::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
+    agg_resv_price = agg_resv_price_r(&app.deps.storage).load().unwrap();
+    assert_eq!(agg_resv_price.uint128_price(), Uint128(65));
+
+    // unstake tx changes reservation price, does not increase bonding period
+    app.next_block(5);
+    msg = ft::msg::HandleMsg::Unstake { amount: Uint128(40) };
+    error = extract_error_msg(ft::contract::handle(&mut app.deps, app.env.clone(), msg.clone()));
+    assert!(error.contains("ftokens are still bonded. Will unbond at height 15"));
     
-}
+    app.next_block(5);
+    ft::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
+    agg_resv_price = agg_resv_price_r(&app.deps.storage).load().unwrap();
+    assert_eq!(agg_resv_price.uint128_price(), Uint128(75));
 
-/////////////////////////////////////////////////////////////////////////////////
-// Misc tests
-/////////////////////////////////////////////////////////////////////////////////
+    // bid below reservation price does not work
+    app.change_env("user2", "ft");
+    error = extract_error_msg(sim_bid(&mut app, 70, None));
+    assert!(error.contains("bid must be equal or greater than the reservation price of "));
+    
+    // bid at reservation price works
+    sim_bid(&mut app, 75, None).unwrap();
+    let (mut bid, mut pos) = get_last_bid(&app.deps.storage).unwrap();
+    let mut exp_bid = BidInfo { 
+        bidder: app.get_addr("user2").address, amount: Uint128(75), winning_bid: false, retrieved_bid: false 
+    };
+    assert_eq!(bid, exp_bid);
+    assert_eq!(pos, 0u32);
+    let mut auc_status = auction_info_r(&app.deps.storage).load().unwrap();
+    let exp_auc_status = AuctionInfo {
+        is_active: true,
+        end_height: 115u64,
+        auc_config_snapshot: AucConf {
+            bid_token: app.get_addr("s20"),
+            auc_period: 100,
+            resv_boundary: 500,
+            min_bid_inc: 1000u32,
+            unlock_threshold: Uint128(5_000),
+        },
+    };
+    assert_eq!(auc_status, exp_auc_status);
+
+    // same user tries to bid below min bid increment -> fails  
+    error = extract_error_msg(sim_bid(&mut app, 77, None));
+    assert!(error.contains("bid needs to be at least "));
+
+    // same user can bid again, above the min bid inc  
+    sim_bid(&mut app, 85, None).unwrap();
+    (bid, pos) = may_get_bid_from_addr(&app.deps.storage, &app.get_addr("user2").address).unwrap().unwrap();
+    exp_bid.amount = Uint128(85);
+    assert_eq!(bid, exp_bid);
+    assert_eq!(pos, 1u32);
+    // auction status (live and end height) unchanged
+    auc_status = auction_info_r(&app.deps.storage).load().unwrap();
+    assert_eq!(auc_status, exp_auc_status);
+    
+    // another user, user1, can bid, even at last block before auction closes
+    app.next_block(100);
+    sim_bid(&mut app, 95, Some("user1")).unwrap();
+    (bid, pos) = get_last_bid(&app.deps.storage).unwrap();
+    exp_bid.bidder = app.get_addr("user1").address;
+    exp_bid.amount = Uint128(95);
+    assert_eq!(bid, exp_bid);
+    assert_eq!(pos, 2u32);
+    // auction status (live and end height) unchanged
+    auc_status = auction_info_r(&app.deps.storage).load().unwrap();
+    assert_eq!(auc_status, exp_auc_status);
+
+    // cannot bid after auction closes, even if finalization tx not called yet
+    app.next_block(1);
+    error = extract_error_msg(sim_bid(&mut app, 95, None));
+    assert!(error.contains("auction has closed"));
+    
+    // cannot retrieve bid until auction is finalized
+
+
+    // cannot claim pro-rata sale proceeds until auction is finalized 
+
+
+
+    // user0 can call finalization tx
+    app.change_env("user0", "ft");
+    sim_finalize_auction(&mut app).unwrap();
+
+    // user1 now has nft
+    let token: s721::token::Token = json_load(
+        &ReadonlyPrefixedStorage::new(PREFIX_INFOS, &app.deps.storage), &0u32.to_le_bytes()
+    ).unwrap();
+    assert_eq!(app.deps.api.human_address(&token.owner).unwrap(), app.get_addr("user1").address);
+
+    // cannot bid after auction finalized
+    error = extract_error_msg(sim_bid(&mut app, 1000, None));
+    assert!(error.contains("vault no longer active"));
+
+    // user2 can retrieve its bid
+    // before retrieving bid
+    assert_eq!(Uint128(5_000 - 85), s20_balance(&mut app, "user2"));
+    sim_retrieve_bid(&mut app, "user2").unwrap();
+    assert_eq!(Uint128(5_000 - 85 + 85), s20_balance(&mut app, "user2"));
+    // user2 cannot retrieve bid again
+    error = extract_error_msg(sim_retrieve_bid(&mut app, "user2"));
+    assert!(error.contains("you have already retrieved bid"));
+    // and balance is unchanged
+    assert_eq!(Uint128(5_000 - 85 + 85), s20_balance(&mut app, "user2"));
+
+    // user0 cannot retrieve bid because did not bid
+    error = extract_error_msg(sim_retrieve_bid(&mut app, "user0"));
+    assert!(error.contains("you did not bid"));
+    assert_eq!(Uint128(5_000), s20_balance(&mut app, "user0"));
+
+    // user1 cannot retrieve bid 
+    assert_eq!(Uint128(5_000 - 95), s20_balance(&mut app, "user1"));
+    error = extract_error_msg(sim_retrieve_bid(&mut app, "user1"));
+    assert!(error.contains("you won the bid. You should have received the NFT"));
+    assert_eq!(Uint128(5_000 - 95), s20_balance(&mut app, "user1"));
+
+    // unstake all ftokens (note user0 already unstaked 40, so has 70-40 = 30 ftokens left, 
+    // similar amount to user1)
+    app.change_env("user0", "ft");
+    msg = ft::msg::HandleMsg::Unstake { amount: Uint128(30) };
+    ft::contract::handle(&mut app.deps, app.env.clone(), msg.clone()).unwrap();
+    app.change_env("user1", "ft");
+    ft::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
+
+    // user0 and user1 and claim pro-rata sale proceeds
+    sim_claim_proceeds(&mut app, "user0").unwrap();
+    sim_claim_proceeds(&mut app, "user1").unwrap();
+    // 5000 is sscrt initial balance
+    assert_eq!(Uint128(5_000 + 70*95/100), s20_balance(&mut app, "user0"));
+    assert_eq!(Uint128(5_000 - 95 + 30*95/100), s20_balance(&mut app, "user1"));
+}
 
 #[test]
-fn test_decode() {
-    let env = mock_env("sender", &[]);
-    let msg0 = to_binary(&InterContrMsg::register_receive(&env.contract_code_hash)).unwrap();
-    let message0: CosmosMsg = CosmosMsg::Wasm(WasmMsg::Execute {
-    contract_addr: HumanAddr("nft_addr".to_string()),
-    callback_code_hash: "nft_hash".to_string(),
-    msg: msg0,
-    send: vec![],
-    });
-
-    let _decoded0: InterContrMsg = extract_cosmos_msg(&message0).unwrap();
-    // println!("The decoded CosmosMsg0 is: {:?}", decoded0);    
-
-    let msg1 = InterContrMsg::register_receive(&env.contract_code_hash);
-    let _message1 = msg1.to_cosmos_msg(
-        "nft_hash".to_string(),
-        HumanAddr("nft_addr".to_string()),
-        None
-    );
-    // // let decoded1: InterContrMsg = extract_cosmos_msg(&message1.unwrap()).unwrap();
-    // println!("The decoded CosmosMsg1 is: {:?}", extract_cosmos_msg::<InterContrMsg>(&message1.unwrap()).unwrap());
+fn test_auction_config_reflects_in_new_auction() {
 }
+
+/// A snapshot of auction config is taken when an auction is initiated. Proposals to change config
+/// must not affect the live auction 
+#[test]
+fn test_auction_config_does_not_change() {
+}
+
+/// Can only be called at the right time
+#[test]
+fn test_finalize_auction() {
+}
+
+#[test]
+fn test_proposals() {
+    let mut app = App::new();
+    init_default(&mut app);
+    fractionalize_default(&mut app);
+    transfer_ftkn_and_stake(&mut app, "user0", "user1", 30, 70, 30).unwrap();
+
+
+}
+
+#[test]
+fn test_proposal_votes() {
+}
+
+
+// #[test]
+// fn test_bidding_retrievenft_forced() {
+//     let mut app = App::new();
+//     init_default(&mut app);
+//     fractionalize_default(&mut app);
+//     sim_bid(&mut app, 2_000, "user2").unwrap();
+//     transfer_ftkn_and_stake(&mut app, "user0", "user1", 30, 0, 0).unwrap();
+
+//     // check bid_info is correct
+//     let mut exp_bid_info = BidInfo {
+//         bid_id: 0u32,
+//         bidder: app.get_addr("user2").address,
+//         amount: Uint128(2_000),
+//         status: BidStatus::Active,
+//         end_height: 100u64,
+//     };
+//     let mut bid_info_0 = bids_r(&app.deps.storage).load(&0u32.to_le_bytes()).unwrap();
+//     assert_eq!(bid_info_0, exp_bid_info);
+//     assert_eq!(Uint128(3_000), s20_balance(&mut app, "user2"));
+
+//     // user2 can make another bid
+//     sim_bid(&mut app, 3_000, "user2").unwrap();
+//     exp_bid_info.bid_id = 1u32;
+//     exp_bid_info.amount = Uint128(3_000);
+//     let mut bid_info_1 = bids_r(&app.deps.storage).load(&1u32.to_le_bytes()).unwrap();
+//     assert_eq!(bid_info_1, exp_bid_info);
+//     // user2 now has zero s20 (sscrt) token balance
+//     assert_eq!(Uint128(0), s20_balance(&mut app, "user2"));
+
+//     // user2 cannot retrieve nft
+//     let handle_result = sim_retrieve_nft(&mut app, 0u32, "user2");
+//     let error = extract_error_msg(handle_result);
+//     assert!(error.contains("Cannot retrieve underlying NFT: bid status is not `WonInVault`"));
+
+//     // forcefully change bid_status of bid_id: 0. user2 cannot `RetrieveNft`
+//     let status_vec = vec![BidStatus::WonRetrieved, BidStatus::Active, BidStatus::LostInTreasury, BidStatus::LostRetrieved];
+//     for status in status_vec.iter() {
+//         bid_info_0.status = status.clone();
+//         bids_w(&mut app.deps.storage).save(&0u32.to_le_bytes(), &bid_info_0).unwrap();
+//         let handle_result = sim_retrieve_nft(&mut app, 0u32, "user2");
+//         let error = extract_error_msg(handle_result);
+//         assert!(error.contains("Cannot retrieve underlying NFT: bid status is not `WonInVault`"));
+//     }
+    
+//     // // forcefully change bid_status of bid_id: 0 to `WonInVault`, and `won_bid_id` = 0:
+//     // won_bid_id_w(&mut app.deps.storage).save(&0u32).unwrap(); 
+//     // other (user1) cannot retrieve...
+//     bid_info_0.status = BidStatus::WonInVault;
+//     bids_w(&mut app.deps.storage).save(&0u32.to_le_bytes(), &bid_info_0).unwrap();
+//     let handle_result = sim_retrieve_nft(&mut app, 0u32, "user1");
+//     let error = extract_error_msg(handle_result);
+//     assert!(error.contains("Cannot retrieve underlying NFT: You are not the bidder"));
+
+//     // ...user2 can retrieve nft
+//     let handle_result = sim_retrieve_nft(&mut app, 0u32, "user2");
+//     assert!(handle_result.is_ok());
+//     // user2 now has NFT
+//     let token: s721::token::Token = json_load(
+//         &ReadonlyPrefixedStorage::new(PREFIX_INFOS, &app.deps.storage), &0u32.to_le_bytes()
+//     ).unwrap();
+//     assert_eq!(app.deps.api.human_address(&token.owner).unwrap(), app.get_addr("user2").address);
+//     // user2 still has zero s20 (sscrt) token balance
+//     assert_eq!(Uint128(0), s20_balance(&mut app, "user2"));
+
+//     // forcefully change bid_status of bid_id: 1. user2 cannot `RetrieveBid`
+//     let status_vec = vec![BidStatus::WonRetrieved, BidStatus::WonInVault, BidStatus::Active, BidStatus::LostRetrieved];
+//     for status in status_vec.iter() {
+//         bid_info_1.status = status.clone();
+//         bids_w(&mut app.deps.storage).save(&1u32.to_le_bytes(), &bid_info_1).unwrap();
+//         let handle_result = sim_retrieve_bid(&mut app, 1u32, "user2");
+//         let error = extract_error_msg(handle_result);
+//         assert!(error.contains("Cannot retrieve bid tokens: bid status is not `LostInTreasury`"));
+//     }
+//     // forcefully change bid_status of bid_id: 1 to `LostInTreasury`: 
+//     // other (user1) cannot retrieve...
+//     bid_info_1.status = BidStatus::LostInTreasury;
+//     bids_w(&mut app.deps.storage).save(&1u32.to_le_bytes(), &bid_info_1).unwrap();
+//     let handle_result = sim_retrieve_bid(&mut app, 1u32, "user1");
+//     let error = extract_error_msg(handle_result);
+//     assert!(error.contains("Cannot retrieve bid tokens: You are not the bidder"));
+    
+//     // ...user2 can retrieve bid
+//     let handle_result = sim_retrieve_bid(&mut app, 1u32, "user2");
+//     assert!(handle_result.is_ok());
+//     // user2 now has 3000 s20 (sscrt) token balance
+//     assert_eq!(Uint128(3_000), s20_balance(&mut app, "user2"));
+
+//     // user0 and user1 can claim pro-rata sale proceeds 
+//     assert_eq!(Uint128(5_000), s20_balance(&mut app, "user0"));
+//     assert_eq!(Uint128(5_000), s20_balance(&mut app, "user1"));
+//     sim_claim_proceeds(&mut app, "user0").unwrap();
+//     sim_claim_proceeds(&mut app, "user1").unwrap();
+//     assert_eq!(Uint128(5_000 + 70*2_000/100), s20_balance(&mut app, "user0"));
+//     assert_eq!(Uint128(5_000 + 30*2_000/100), s20_balance(&mut app, "user1"));
+// }
+
+// #[test]
+// fn test_bid_votes() {
+//     let mut app = App::new();
+//     init_default(&mut app);
+//     fractionalize_default(&mut app);
+//     transfer_ftkn_and_stake(&mut app, "user0", "user1", 30, 70, 30).unwrap();
+//     sim_bid(&mut app, 2_000, "user2").unwrap();
+//     // todo
+
+//     // // unstake ftokens
+//     // app.change_env("user0", "ft");
+//     // let msg = ft::msg::HandleMsg::Unstake { amount: Uint128(70) };
+//     // ft::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
+
+//     // app.change_env("user1", "ft");
+//     // let msg = ft::msg::HandleMsg::Unstake { amount: Uint128(30) };
+//     // ft::contract::handle(&mut app.deps, app.env.clone(), msg).unwrap();
+
+    
+// }
+
 

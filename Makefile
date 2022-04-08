@@ -5,6 +5,11 @@
 .PHONY: build-start-server
 build-start-server: build start-server
 
+# runs multi-contract unit tests
+.PHONY: multitest 
+multitest: 
+	cargo test -p int_tests
+
 # `make start-server` on a different terminal first. Also need to `chmod u+x integration.sh`
 .PHONY: integration-test
 integration-test: build

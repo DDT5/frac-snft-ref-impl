@@ -11,7 +11,7 @@ use crate::{
     state::UploadedFtkn,
 };
 
-use fsnft_utils::{FtokenContrInit, FtokenInstance, FtokenInit, UndrNftInfo, ContractInfo};
+use fsnft_utils::{FtokenContrInit, FtokenInstance, FtokenInit, UndrNftInfo};
 
 /////////////////////////////////////////////////////////////////////////////////
 // Init message
@@ -20,7 +20,7 @@ use fsnft_utils::{FtokenContrInit, FtokenInstance, FtokenInit, UndrNftInfo, Cont
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
     pub uploaded_ftoken: UploadedFtkn,
-    pub bid_token: ContractInfo,
+    // pub bid_token: ContractInfo,
 }
 
 

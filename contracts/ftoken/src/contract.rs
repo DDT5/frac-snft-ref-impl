@@ -28,10 +28,11 @@ use secret_toolkit::permit::{validate, Permission, Permit, RevokedPermits};
 use crate::{
     ftoken_mod::{
         handles::{
-            add_ftoken_init, try_batch_receive_nft, try_bid, try_receive_snip20, try_stake, try_unstake,
-            try_vote, try_finalize_vote_count,
-            try_retrieve_nft,
-            try_retrieve_bid, try_claim_proceeds},
+            add_ftoken_init, try_batch_receive_nft, try_propose, try_stake, try_unstake,
+            try_finalize_vote_may_execute_proposal, try_retrieve_prop_stake,
+            try_vote_resv_price, try_bid, try_vote_proposal, try_finalize_auction,
+            try_claim_proceeds, try_retrieve_bid,
+            },
         queries::{debug_query},
     }
 };
@@ -286,13 +287,13 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             env,
             amount,    
         ),
-        HandleMsg::Receive(
-            snip20receivemsg
-        ) => try_receive_snip20(
-            deps,
-            env,
-            snip20receivemsg,
-        ),
+        // HandleMsg::Receive(
+        //     snip20receivemsg
+        // ) => try_receive_snip20(
+        //     deps,
+        //     env,
+        //     snip20receivemsg,
+        // ),
         HandleMsg::Stake {
             amount,
         } => try_stake(
@@ -307,21 +308,18 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             env,
             amount,
         ),
-        HandleMsg::Vote {
-            bid_id,
+        HandleMsg::VoteProposal {
+            prop_id,
             vote,
-        } => try_vote(
+        } => try_vote_proposal(
             deps,
             env,
-            bid_id,
+            prop_id,
             vote,
         ),
-        HandleMsg::FinalizeVoteCount {
-            bid_id,
-        } => try_finalize_vote_count(
+        HandleMsg::FinalizeAuction { } => try_finalize_auction(
             deps,
             env,
-            bid_id,
         ),
         // HandleMsg::ChangeBidStatus {
         //     bid_id,
@@ -334,25 +332,53 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         //     status_idx,
         //     winning_bid,
         // ),
-        HandleMsg::RetrieveNft {
-            bid_id,
-        } => try_retrieve_nft(
-            deps,
-            env,
-            bid_id,
-        ),
+        // HandleMsg::RetrieveNft {
+        //     bid_id,
+        // } => try_retrieve_nft(
+        //     deps,
+        //     env,
+        //     bid_id,
+        // ),
         HandleMsg::RetrieveBid {
-            bid_id,
         } => try_retrieve_bid(
             deps, 
             env,
-            bid_id,
         ),
         HandleMsg::ClaimProceeds {
         } => try_claim_proceeds(
             deps,
             env,
-        )
+        ),
+        HandleMsg::Propose {
+            proposal,
+            stake,
+        } => try_propose(
+            deps,
+            env,
+            proposal,
+            stake,
+        ),
+        HandleMsg::FinalizeExecuteProp {
+            prop_id,
+        } => try_finalize_vote_may_execute_proposal(
+            deps,
+            env,
+            prop_id,
+        ),
+        HandleMsg::RetrievePropStake {
+            prop_id
+        } => try_retrieve_prop_stake(
+            deps,
+            env,
+            prop_id,
+        ),
+        HandleMsg::VoteReservationPrice { 
+            resv_price 
+        } => try_vote_resv_price(
+            deps,
+            env,
+            resv_price,
+        ),
     };
 
     pad_response(response)

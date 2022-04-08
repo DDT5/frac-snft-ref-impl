@@ -40,7 +40,7 @@ workspace
     - [Configuring the underlying NFT](#configuring-the-underlying-nft)
     - [ftoken holders' access to private metadata](#ftoken-holders-access-to-private-metadata)
     - [Royalties](#royalties)
-    - [Bidding](#bidding)
+    - [Auction](#auction)
     - [Other rules or unusual situations](#other-rules-or-unusual-situations)
   - [Messages](#messages)
     - [Depositing a SNIP721 token into the vault](#depositing-a-snip721-token-into-the-vault)
@@ -56,9 +56,7 @@ workspace
   - [SNIP721 compliance](#snip721-compliance)
   - [Royalties](#royalties-1)
   - [Private metadata viewability](#private-metadata-viewability)
-  - [Bidding](#bidding-1)
-    - [The ability to bid](#the-ability-to-bid)
-    - [Multiple bids](#multiple-bids)
+  - [Buyout auction](#buyout-auction)
   - [Default settings](#default-settings)
 - [More information](#more-information)
 
@@ -79,11 +77,10 @@ This memo uses terms defined below:
 
 * **NFT** refers to a [SNIP721](https://github.com/SecretFoundation/SNIPs/blob/master/SNIP-721.md)-compliant token
 * **ftokens** ("fractional tokens") are [SNIP20](https://github.com/SecretFoundation/SNIPs/blob/master/SNIP-20.md)-compliant (fungible) tokens that represent fractional ownership of an underlying NFT
-* **Vault** is the NFT inventory of the frac-sNFT contract 
-* **Underlying NFT** refers to a SNIP721 token that has been deposited into the vault
-* **Collection (TERM TO BE CHANGED SO WON'T BE CONFUSED WITH `COLLECTION` AS DEFINED BY SNIP721)** refers to one or more deposited NFTs that share similar ftokens. For the base specification, a collection simply refers to a unique underlying NFT (terminology can be used interchangeably in this case) 
+* **Underlying NFT** refers to a SNIP721 token that has been fractionalized
+* **Basket** refers to one or more deposited NFTs within the same vault (which would share similar ftokens). For the base specification, a basket only consists of a single underlying NFT 
+* **Vault** is the inventory where a basket of NFTs are stored while in fractionalized state   
 * **NFT depositor** is the user which deposited the underlying NFT into the vault
-* **Fractionalized state** refers to the state the underlying NFT is while locked in the vault
 * **User** refers to any Secret Network address that interacts with the frac-sNFT contract(s), which can be either a smart contract address or an address controlled by a person 
 * **Buy out** refers to the event where a user unlocks (from the vault) and receives an underlying NFT
 * **Bidder** refers to an address that places a bid to buy out the collection
@@ -97,16 +94,16 @@ This memo uses terms defined below:
 # Base specification
 
 ## Design
-The contract allows an existing owner of a [SNIP721](https://github.com/SecretFoundation/SNIPs/blob/master/SNIP-721.md)-compliant token on Secret Network to deposit the token into the frac-sNFT vault in exchange for fractional tokens (ftokens), which represent fractional ownership that can be traded between Secret addresses. At any time while the underlying NFT is in the vault, a user can place a bid to buy out the underlying NFT. If the bid is successful, the bidder pays its bid amount and receives the underlying NFT. ftoken holders can then redeem their pro-rata share of the sale proceeds. 
+The contract allows an existing owner of a [SNIP721](https://github.com/SecretFoundation/SNIPs/blob/master/SNIP-721.md)-compliant token on Secret Network to deposit the token into the frac-sNFT vault in exchange for fractional tokens (ftokens), which represent fractional ownership that can be traded between Secret addresses. A user can place a bid to buy out the underlying NFT through an auction process. If the bid is successful, the bidder pays its bid amount and receives the underlying NFT. ftoken holders can then redeem their pro-rata share of the sale proceeds. 
 
 ### Fractionalization
-The frac-sNFT contract MUST implement a [SNIP721 receiver interface](https://github.com/baedrik/snip721-reference-impl/blob/master/README.md#receiver).
+<!-- The frac-sNFT contract MUST implement a [SNIP721 receiver interface](https://github.com/baedrik/snip721-reference-impl/blob/master/README.md#receiver). -->
 
 The vault MUST accept SNIP721 tokens if the following conditions are met:
 * The frac-sNFT contract has been given permission to transfer the SNIP721 token (note: this is granted by the owner of the NFT)
 * While the NFT is in the vault, no address other than the frac-sNFT contract is able to send messages to the underlying NFT, with the exception of the minter being able to change the metadata if that is how the underlying NFT is configured
 
-Once the user deposits a token into the vault, the token MUST be kept in the contract's inventory for as long as the NFT remains in a fractionalized state. The underlying NFT MUST NOT be transferrable out of the vault (eg: by an address with transfer permissions), other than through a [bidding](#bidding) process. The underlying SNIP721 token MUST have the following configurations when it is held in the vault.
+Once the user deposits a token into the vault, the token MUST be kept in the contract's inventory for as long as the NFT remains fractionalized. The underlying NFT MUST NOT be transferrable out of the vault (eg: by an address with transfer permissions), other than through an [auction](#auction) process. The underlying SNIP721 token MUST have the following configurations when it is held in the vault.
 
 ```json
 {
@@ -183,12 +180,12 @@ The vault MUST be able to hold multiple collections in its inventory, but ftoken
 ### DAO
 
 ftoken holders MUST be entited to participate in certain decisions related to their collection:
-* whether a bid is accepted or rejected (see [bidding](#bidding))
 * propose or vote on change of configuration of the 
   * underlying NFT
   * ftokens 
   * authenticated queries to the frac-sNFT contract
-  * DAO 
+  * DAO
+  * auction process 
 
 Changes in configuration MUST be decided by ftoken holders via a DAO:
 * A existing ftoken holder submits a proposed transaction message to be sent to the underlying NFT 
@@ -230,22 +227,21 @@ Secondary trade royalties MUST have these core functionalities implemented:
 
 See example [here](#royalties-1)
 
-### Bidding
+### Auction
 
-At any point while the NFT remains in a fractionalized state, Secret addresses MUST be allowed to submit a bid to buy out the underlying NFT. While a bid is active, the frac-sNFT contract SHOULD allow further bids to be made. Conditions SHOULD be set on bids to prevent spamming:
-* a minimum bid amount
+At any point while the NFT is fractionalized, it MUST have a reservation price. ftoken holders SHOULD be allowed to vote on the reservation price. Once a threshold proportion of votes is met, the vault becomes unlocked. Then, a bidder MAY submit a bid at or above the reservation price. When this happens, an auction process begins. Before the auction closes, further bids SHOULD be allowed, but bids SHALL NOT be withdrawn. An existing bidder SHOULD be allowed to increase its bid. A minimum increment for each subsequent bid MAY be set.
 
-Bids MUST accept sSCRT tokens. The bidder's bid deposit MUST remain locked in the frac-sNFT contract while the bid remains active. A bid MUST either "win" or "lose". Either zero or one bids SHALL win.
+Bids MUST accept SNIP20 compliant tokens. The bidder's bid amount MUST remain locked in the frac-sNFT contract while the bid remains active. A bid MUST either "win" or "lose". Only one bid SHALL win.
 
-ftoken holders MUST be allowed to vote on each of the bids. Whether bids are accepted or rejected MUST be determined by DAO parameters. A deterministic rule MUST be used to choose which one of potentially multiple accepted bids is the "winner". In the default implementation, all bids have an ID which starts from 0u32 and increments by a whole number for each subsequent bid. When the frac-sNFT contract tests its bids, it searches for the active bid with the smallest ID. If the bid is accepted, it wins. All other bids lose. If instead the bid with the smallest ID is rejected, it loses, and the contract performs the same actions on the bid with the next-smallest ID.
+When an auction is live:
+* any configuration changes made through the DAO does not affect the current auction
+* (ftoken holders cannot send any messages to the underlying NFT)
  
 If a bid loses, the bidder MUST be able to claim back its bid deposit. 
 
 If a bid wins, the NFT is unfractionalized, where the following MUST hold true or happen: 
-* the winner's bid deposit moves to the bid treasury 
-* the winning bidder is able to receive the underlying NFT
-* ftoken holders can claim their pro-rata share of the bid amount from the bid treasury
-* ftoken holders cannot send any messages to the underlying NFT
+* the winner must receive the underlying NFT
+* ftoken holders can claim their pro-rata share of the winner's bid amount
 * all secondary royalty payments cease to accrue
 * no further bids can be made
 * any query to the frac-sNFT contract regarding this collection (including queries of the private metadata) receives a response that the NFT has been unfractionalized
@@ -253,8 +249,6 @@ If a bid wins, the NFT is unfractionalized, where the following MUST hold true o
 ### Other rules or unusual situations
 * If the NFT expires while in the vault, ...
 * If a minter changes private metadata while NFT is vault ... 
-* If two bids happen on the same block, and if both gets enough yes votes, the one with the smaller ID is tested first. The ID would have been determined by the sequence of the tx when the block was proposed 
-* If Bid 1 is made, then Bid 2. But Bid 2 reaches the end of its voting period before Bid 1 does, due to a DAO vote (shortening the voting period) passing between the two bids. Bid 1 should still be tested first due to having a smaller ID. Bid 2 will remain "in waiting" until Bid 1 reaches the end of its voting period.
 
 
 ## Messages
@@ -403,27 +397,12 @@ An example of the core mechanism: an underlying NFT has royalty set at 2%. When 
 
 The author of this standard recognizes that there are several practical use case-specific issues to solve with viewership permissions of private metadata. Consistent with the design philosophy, this standard does not dictate the correct way for applications to address these issues. Therefore, the standard gives the flexibility to choose any threshold from 0% to 100% ftoken ownership before private metadata is viewable by a particular address. Applications implementing this standard are free to decide whether or not this flexibility to extended to the NFT depositor. 
 
-## Bidding
+## Buyout auction
 
-### The ability to bid
-
-At least one of the major implementations of fractionalized NFTs on other chains today does not have a bidding process. With that design, a party wishing to buy out the underlying NFT needs to first accumulate 100% of the fractionalized tokens. We believe that such an implementation is flawed because unlocking the underlying NFT becomes infeasible. It follows that the economic link between NFT and fractionalized tokens is drastically reduced.
+An economic link exists between the fractionalized tokens and underlying NFT because a buyer is able to buy out the underlying NFT, and fractionalized token holders receive pro-rata share of the sale proceeds in the process. It is important that there is relatively low friction in this process to maintain a strong economic link. Without an auction process, a party wishing to buy out the underlying NFT needs to accumulate 100% of the fractionalized tokens. Such an implementation is flawed because unlocking the underlying NFT becomes infeasible. It follows that the economic link between NFT and fractionalized tokens is drastically reduced.
 * Buying 100% of ftokens is infeasible in most cases, because i) some ftokens may be lost due to being permanently locked into contracts or being held by accounts that are no longer active, ii) the last few ftoken holders can "hold the underlying NFT hostage" and either achieve a higher sell price or subvert the decision of the majority of ftoken holders.
-* An economic link exists between the fractionalized tokens and the underlying NFT precisely because of the ability to unfractionalize the NFT and receive pro-rata share of the sale proceeds
 * If unfractionalization is infeasible, the fractionalized tokens no longer represents fractional ownership of the underlying NFT from an economic point of view.
 * Additionally, if certain fractional owners can achieve greater sale prices (in the "hold hostage" situation described above), the ftokens are arguably no longer fungible.
-
-The bidding process required by the standards written here essentially solves these issues.
-
-### Multiple bids 
-
-As multiple bids are allowed, there can be situations where more than one bid receives enough "yes" votes to be accepted. Therefore, the final outcome needs to be determined by a second condition. The standard implements a first-come-first-served rule as the default. Therefore, the final outcome is determined by two conditions:
-* A bid is "accepted" based on vote counts at the end of its voting period (determined by DAO parameters)
-* A bid "wins" when it is the first to be accepted at the end of its voting period. The bidder of the winning bid successfully buys out the underlying NFT. 
-
-For example, Bidder 1 submits Bid 1 on block 10000, and Bid 2 is submitted on block 10010. When Bid 1 reaches the end of its voting period, the contract counts all votes and determines if the bid is accepted. If Bid 1 is accepted, Bidder 1 pays its bid amount and receives the underlying NFT. Bid 2 and any later bids are automatically rejected. If instead, Bid 1 had been rejected at the end of its voting period, then the contract performs the same actions on Bid 2 to determine if it wins the bid.
-
-However, applications can decide on different criteria to determine which accepted bid "wins".
 
 ## Default settings
 

@@ -561,13 +561,18 @@ function doFractionalize() {
                         "min_ftkn_bond_prd":1,
                         "bid_period":2,
                         "bid_vote_quorum":"1000"
+                    },
+                    "prop_conf":{
+                        "prop_period":5,
+                        "prop_vote_quorum":"200",
+                        "min_stake":"20"
                     }
                 }
             }
         }
         }'
     msg="$(echo $msg | sed  's/ *//g')"
-    # echo ${msg:437:20}
+    # echo ${msg:437:30}
     handle_w "$fract" "$msg" a
 }
 
@@ -626,7 +631,7 @@ function doUnfractionalize() {
 
     # finalize vote count. no votes => does not reach quorum
     sleep 6
-    msg='{"finalize_vote_count":{"bid_id":0}}'
+    msg='{"finalize_bid_vote_count":{"bid_id":0}}'
     handle_w "$ftoken0" "$msg" a
 
     # bidder can retrieve bid
@@ -649,7 +654,7 @@ function doUnfractionalize() {
     handle_w "$ftoken0" '{"vote":{"bid_id":1,"vote":"no"}}' b
 
     # finalize vote count. yes>no, so bid wins
-    msg='{"finalize_vote_count":{"bid_id":1}}'
+    msg='{"finalize_bid_vote_count":{"bid_id":1}}'
     handle_w "$ftoken0" "$msg" a
 
     # bidder retrieves nft
