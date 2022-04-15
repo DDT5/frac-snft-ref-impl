@@ -246,6 +246,7 @@ pub(crate) fn fractionalize_default(app: &mut App) {
             init_resv_price: Uint128(500),
             ftkn_conf: FtokenConf {
                 min_ftkn_bond_prd: 10u64,
+                priv_metadata_view_threshold: 5_000,
                 auc_conf: AucConf {
                     bid_token: app.get_addr("s20"),
                     auc_period: 100,

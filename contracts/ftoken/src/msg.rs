@@ -9,7 +9,8 @@ use crate::viewing_key::ViewingKey;
 use cosmwasm_std::{
     Binary, HumanAddr, StdError, StdResult, Uint128,
 };
-use secret_toolkit::permit::Permit;
+// ftoken removals:
+// use secret_toolkit::permit::Permit;
 
 // ftoken additions:
 use fsnft_utils::{FtokenContrInit, FtokenInfo, FtokenConf};
@@ -17,9 +18,14 @@ use fsnft_utils::{FtokenContrInit, FtokenInfo, FtokenConf};
 //     receiver::Snip20ReceiveMsg,
 // };
 use crate::ftoken_mod::{
-    msg::{Proposal},
+    msg::{Proposal, FtokenQuery, FtokenAuthQuery, FtokenQueryAnswer},
     state::{Vote},
 };
+
+use crate::ftoken_mod::ft_permit::Permit;
+
+// ///////////////////////////
+
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InitialBalance {
@@ -249,7 +255,8 @@ pub enum HandleMsg {
         /// optional message to control receiving logic
         msg: Option<Binary>,
     },
-    /// Bidder calls this function to place a bid for underlying NFT
+    /// Bidder calls this function to place a bid for underlying NFT. Bid needs to be at least as
+    /// large as the reservation price, otherwise the tx is invalid
     Bid {
         /// bid amount denominated in the smallest denomination of the token
         amount: Uint128
@@ -257,16 +264,24 @@ pub enum HandleMsg {
 
     // /// Receiver interface for sSCRT contract's `SendFrom` callback
     // Receive(Snip20ReceiveMsg),
-    /// Stake ftokens
+    /// Stake ftokens. Ftoken holders need to stake ftokens before voting on either
+    /// proposals or the reservation price. Staked ftokens will be bonded for a period
+    /// specified by the configuration 
     Stake {
+        /// The amount that the ftoken holder wishes to stake
         amount: Uint128,
     },
-    /// Unstake ftokens
+    /// Unstake ftokens. Ftoken holders can unstake ftokens after the bonding period
     Unstake {
+        /// The amount that the ftoken holder wishes to unstake
         amount: Uint128,
     },
+    /// Votes for DAO proposals to change configuration of the ftokens or send messages
+    /// to the underlying NFT
     VoteProposal {
+        /// The proposal ID
         prop_id: u32,
+        /// The vote that the user wishes to cast on the proposal
         vote: Vote,
     },
     FinalizeAuction { },
@@ -275,18 +290,34 @@ pub enum HandleMsg {
     //     /// the underlying nft token idx, which can be obtained via query (todo)
     //     bid_id: u32,
     // },
+    /// If a bidder fails to win an auction, the bidder can retrieve its bid after the 
+    /// auction period if over
     RetrieveBid { },
+    /// Once an underlying NFT is bought out, ftoken holders can claim their pro-rata
+    /// share of sales proceeds
     ClaimProceeds { },
+    /// Make a DAO proposal
     Propose {
         proposal: Proposal,
+        /// Users need to stake a certain number of ftokens when making proposals, which 
+        /// is set initially and can be later configured through the DAO. This stake can
+        /// be retrieve once the proposal's voting period is over and the outcome finalized.
+        /// Proposers lose their stake if their proposal outcome is `LostWithVeto`
         stake: Uint128,
     },
+    /// Once a proposal reaches the end of its voting period, anyone may call this 
+    /// transaction to simultaneously finalize the vote count and execute the proposal
     FinalizeExecuteProp {
         prop_id: u32,
     },
+    /// Proposers may retrieve their staked ftokens after proposals are finalized and
+    /// executed. This stake is lost if the vote outcome is `LostWithVeto`
     RetrievePropStake {
         prop_id: u32,
     },
+    /// ftoken holders whic have staked ftokens may vote a reservation price for 
+    /// the underlying NFT. The weighted average votes on reservation price will be 
+    /// the minimum bid amount that bidders need to make to buy out the underlying NFT
     VoteReservationPrice {
         resv_price: Uint128,
     }
@@ -462,8 +493,15 @@ pub enum QueryMsg {
         permit: Permit,
         query: QueryWithPermit,
     },
+    // ftoken additions:
+    FtokenQuery(FtokenQuery),
+    FtokenVkQuery {
+        address: HumanAddr,
+        key: String,
+        query: FtokenAuthQuery,
+    },
     // temporary for DEBUGGING. Must remove for final implementation
-    DebugQuery {},
+    DebugQuery {  },
 }
 
 impl QueryMsg {
@@ -480,6 +518,10 @@ impl QueryMsg {
                 key,
                 ..
             } => (vec![owner, spender], ViewingKey(key.clone())),
+            // ftoken additions:
+            Self::FtokenVkQuery { address, key, query: _  } => {
+                (vec![address], ViewingKey(key.clone()))
+            }
             _ => panic!("This query type does not require authentication"),
         }
     }
@@ -501,6 +543,8 @@ pub enum QueryWithPermit {
         page: Option<u32>,
         page_size: u32,
     },
+    // ftoken additions:
+    FtokenPermitQuery(FtokenAuthQuery),
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
@@ -549,6 +593,8 @@ pub enum QueryAnswer {
     Minters {
         minters: Vec<HumanAddr>,
     },
+    // ftoken additions:
+    FtokenQueryAnswer (FtokenQueryAnswer),
     // temporary for DEBUGGING. Must remove for final implementation
     DebugQAnswer {
         ftokeninfo: FtokenInfo,

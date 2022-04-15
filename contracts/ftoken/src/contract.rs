@@ -5,6 +5,7 @@ use cosmwasm_std::{
 };
 
 use crate::batch;
+use crate::ftoken_mod::queries::ftoken_viewing_keys_queries;
 use crate::msg::QueryWithPermit;
 use crate::msg::{
     space_pad, ContractStatusLevel, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg,
@@ -22,7 +23,8 @@ use crate::transaction_history::{
     get_transfers, get_txs, store_burn, store_deposit, store_mint, store_redeem, store_transfer,
 };
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
-use secret_toolkit::permit::{validate, Permission, Permit, RevokedPermits};
+// ftoken removals
+// use secret_toolkit::permit::{validate, Permission, Permit, RevokedPermits};
 
 // ftoken additions:
 use crate::{
@@ -33,9 +35,10 @@ use crate::{
             try_vote_resv_price, try_bid, try_vote_proposal, try_finalize_auction,
             try_claim_proceeds, try_retrieve_bid,
             },
-        queries::{debug_query},
+        queries::{ftoken_queries, ftoken_permit_queries, debug_query},
     }
 };
+use crate::ftoken_mod::ft_permit::{validate, Permission, Permit, RevokedPermits};
 
 // ftoken additions: changed the bytes so does not conflict with SNIP20-standard-implementation.
 // This is so multi-contract unit tests can work without the storage keys colliding. 
@@ -392,6 +395,8 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
         QueryMsg::ExchangeRate {} => query_exchange_rate(&deps.storage),
         QueryMsg::Minters { .. } => query_minters(deps),
         QueryMsg::WithPermit { permit, query } => permit_queries(deps, permit, query),
+        // ftoken additions:
+        QueryMsg::FtokenQuery(query) => ftoken_queries(deps, query),
         // temporary for DEBUGGING. Must remove for final implementation
         QueryMsg::DebugQuery {} => debug_query(deps),
         _ => viewing_keys_queries(deps, msg),
@@ -460,6 +465,8 @@ fn permit_queries<S: Storage, A: Api, Q: Querier>(
 
             query_allowance(deps, owner, spender)
         }
+        // ftoken additions:
+        QueryWithPermit::FtokenPermitQuery( query ) => ftoken_permit_queries(deps, permit, &account, query)
     }
 }
 
@@ -495,6 +502,9 @@ pub fn viewing_keys_queries<S: Storage, A: Api, Q: Querier>(
                     ..
                 } => query_transactions(deps, &address, page.unwrap_or(0), page_size),
                 QueryMsg::Allowance { owner, spender, .. } => query_allowance(deps, owner, spender),
+                // ftoken additions:
+                QueryMsg::FtokenVkQuery { address, query, ..  } => ftoken_viewing_keys_queries(deps, &address, query),
+                /////////////////////////////
                 _ => panic!("This query type does not require authentication"),
             };
         }

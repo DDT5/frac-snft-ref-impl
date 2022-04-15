@@ -77,11 +77,11 @@ pub fn props_r<S: Storage>(storage: &S) -> ReadonlyBucket<S, PropInfo> {
     bucket_read(PROPS_STORE, storage)
 }
 
-/// vote tally, which is the running cumulative tally
-pub fn votes_total_w<S: Storage>(storage: &mut S) -> Bucket<S, TotalVotes> {
+/// proposal vote tally, which is the running cumulative tally
+pub fn votes_total_w<S: Storage>(storage: &mut S) -> Bucket<S, VoteRegister> {
     bucket(VOTES_TOTAL, storage)
 }
-pub fn votes_total_r<S: Storage>(storage: &S) -> ReadonlyBucket<S, TotalVotes> {
+pub fn votes_total_r<S: Storage>(storage: &S) -> ReadonlyBucket<S, VoteRegister> {
     bucket_read(VOTES_TOTAL, storage)
 }
 
@@ -98,18 +98,18 @@ pub fn resv_price_r<S: Storage>(storage: &S) -> ReadonlyBucket<S, ResvVote> {
 // Multi-level Buckets
 /////////////////////////////////////////////////////////////////////////////////
 
-/// Multilevel bucket to store votes. Key intended to be [`bid_id`, HumanAddr]  
+/// Multilevel bucket to store proposal votes. Key intended to be [`bid_id`, HumanAddr]  
 pub fn votes_w<S: Storage>(
     storage: &mut S,
-    bid_id: u32
+    prop_id: u32
 ) -> Bucket<S, VoteRegister> {
-    Bucket::multilevel(&[VOTES_BUCKET, &bid_id.to_le_bytes()], storage)
+    Bucket::multilevel(&[VOTES_BUCKET, &prop_id.to_le_bytes()], storage)
 }
 pub fn votes_r<S: Storage>(
     storage: &S,
-    bid_id: u32
+    prop_id: u32
 ) -> ReadonlyBucket<S, VoteRegister> {
-    ReadonlyBucket::multilevel(&[VOTES_BUCKET, &bid_id.to_le_bytes()], storage)
+    ReadonlyBucket::multilevel(&[VOTES_BUCKET, &prop_id.to_le_bytes()], storage)
 }
 
 
@@ -239,8 +239,8 @@ pub fn get_last_bid<S: Storage>(
     Ok((last_bid, pos))
 }
 
-/// returns all bids in reverse order and the number of bids
-/// if bids can be queried, bidders' addressed can be identified (even if addresses are removed
+/// Returns all bids in reverse order and the number of bids.
+/// If bids can be queried, bidders' addressed can be identified (even if addresses are removed
 /// from the query result, if using side chain attacks)
 pub fn get_bids<S: Storage>(
     store: &S,
@@ -276,13 +276,28 @@ pub struct StakedTokens {
     pub unlock_height: u64,
 }
 
+impl Default for StakedTokens {
+    fn default() -> Self {
+        Self {
+            amount: Uint128(0),
+            unlock_height: 0u64,
+        }
+    }
+}
 
+/// Vote cast on proposals 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Vote {
+    /// If a proposal's veto votes are below the veto threshold, and quorum is met,
+    /// the proposal will pass if yes votes > no votes
     Yes,
     No,
+    /// If a certain threshold percentage of veto votes are made (determined by)
+    /// the DAO configuration, the proposer will lose their staked ftokens
     Veto,
+    /// Abstain votes count towards quorum (which need to be met for a proposal)
+    /// to pass
     Abstain,
 }
 
@@ -294,14 +309,14 @@ pub struct VoteRegister {
     pub abstain: Uint128,
 }
 
-/// vote count, weighted by staked ftokens todo!() remove duplicate struct
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
-pub struct TotalVotes {
-    pub(crate) yes: Uint128,
-    pub(crate) no: Uint128,
-    pub(crate) veto: Uint128,
-    pub(crate) abstain: Uint128,
-}
+// /// vote count, weighted by staked ftokens todo!() remove duplicate struct
+// #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
+// pub struct TotalVotes {
+//     pub(crate) yes: Uint128,
+//     pub(crate) no: Uint128,
+//     pub(crate) veto: Uint128,
+//     pub(crate) abstain: Uint128,
+// }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum VoteResult {
@@ -310,11 +325,11 @@ pub enum VoteResult {
     LostWithVeto,
 }
 
-// impl Default for VoteResult {
-//     fn default() -> Self {
-//         VoteResult::InVoting
-//     }
-// }
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct PropInfoTally {
+    pub prop_info: PropInfo,
+    pub vote_tally: VoteRegister,
+}
 
 /// proposal information as stored by ftoken contract
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

@@ -109,6 +109,11 @@ pub struct FtokenConf {
     /// number of blocks that ftokens will be bonded after a vote (on reservation
     /// price or on proposals). Important to prevent vote spamming and manipulation 
     pub min_ftkn_bond_prd: u64,
+    /// proportion of ftoken ownership required before private metadata of underlying
+    /// NFT can be queried by ftoken owner. This needs to be done with authenticated
+    /// query, either through viewing keys or viewing permit. Unit in basis points (ie:
+    /// 1/10_000)
+    pub priv_metadata_view_threshold: u32,
     /// configurations for auctions
     pub auc_conf: AucConf,
     // configurations for proposals

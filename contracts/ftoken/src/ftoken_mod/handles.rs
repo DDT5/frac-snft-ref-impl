@@ -23,7 +23,7 @@ use crate::{
         votes_w, votes_r, votes_total_w, votes_total_r, 
         agg_resv_price_w, agg_resv_price_r, resv_price_w, resv_price_r,
         auction_info_w, auction_info_r,
-        PropInfo, StakedTokens, Vote, VoteRegister, TotalVotes, VoteResult,
+        PropInfo, StakedTokens, Vote, VoteRegister, VoteResult,
         ResvVote, AuctionInfo, BidInfo,
         U256, 
         },
@@ -335,7 +335,7 @@ pub fn try_propose<S: Storage, A: Api, Q: Querier>(
     props_w(&mut deps.storage).save(&prop_id.to_le_bytes(), &prop_info)?;
 
     // initialize votes_total to 0
-    votes_total_w(&mut deps.storage).save(&prop_id.to_le_bytes(), &TotalVotes::default())?;
+    votes_total_w(&mut deps.storage).save(&prop_id.to_le_bytes(), &VoteRegister::default())?;
 
     // add 1 to bid_id count
     prop_id_w(&mut deps.storage).save(&prop_id.add(1u32))?;
@@ -1251,7 +1251,7 @@ fn new_agg_resv_vote(curr_agg: &ResvVote, old: &ResvVote, new: &ResvVote) -> Res
     )
 }
 
-fn calc_pro_rata(
+pub(crate) fn calc_pro_rata(
     num: u128,
     denom: u128,
     normalized_to: u128,

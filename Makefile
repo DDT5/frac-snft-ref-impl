@@ -52,6 +52,14 @@ build-mainnet-reproducible:
 		--mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
 		enigmampc/secret-contract-optimizer:1.0.6
 
+.PHONY: doc
+doc:
+	rm -rf ./target/doc
+	cargo doc --no-deps --workspace --exclude snip20-reference-impl \
+	--exclude snip721-reference-impl --exclude int_tests
+	rm -rf ../Doc/docs
+	cp -r ./target/doc ../Doc/docs
+
 .PHONY: clean
 clean:
 	cargo clean

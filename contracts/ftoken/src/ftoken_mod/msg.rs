@@ -2,25 +2,38 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{
-    HumanAddr, Uint128, Env,
+    HumanAddr, Env, Uint128,
 };
 
-use fsnft_utils::{FtokenInstance, ContractInfo, UndrNftInfo, FtokenConf};
+use fsnft_utils::{
+    FtokenInstance, ContractInfo, UndrNftInfo, FtokenInfo, FtokenConf,
+    AucConf, PropConf,
+};
 use secret_toolkit::{
     // serialization::{Json, Serde}, 
     utils::{HandleCallback, Query}, 
-    snip721::{ViewerInfo, AccessLevel, Metadata, Expiration},
+    snip721::{ViewerInfo, AccessLevel, Metadata, Expiration, NftDossier, 
+    },
 }; 
 use crate::{
     contract::{RESPONSE_BLOCK_SIZE}, 
     msg::InitMsg,
 };
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct InitialBalance {
-    pub address: HumanAddr,
-    pub amount: Uint128,
-}
+use super::{
+    state::{StakedTokens, ResvVote, PropInfoTally, VoteRegister, BidInfo},
+};
+
+/////////////////////////////////////////////////////////////////////////////////
+// Instantiation
+/////////////////////////////////////////////////////////////////////////////////
+
+// #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+// pub struct InitialBalance {
+//     pub address: HumanAddr,
+//     pub amount: Uint128,
+// }
+
 
 /// Init Callback response to send upon instantiation of ftoken contract
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
@@ -70,6 +83,73 @@ impl InitRes {
 }
 
 
+/////////////////////////////////////////////////////////////////////////////////
+// ftoken query messages
+/////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FtokenQuery {
+    FtokenInfo { },
+    FtokenConfig { },
+    AuctionConfig { },
+    ProposalConfig { },
+    ReservationPrice { },
+    ProposalList { },
+    // enabling this reduces the privacy of bidders. Blockchain analysis or side chain attacks
+    // can easily reveal address of bidders
+    BidList { 
+        page: u32, 
+        page_size: u32 
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FtokenAuthQuery {
+    NftPrivateMetadata { },
+    NftDossier { },
+    StakedTokens { },
+    ReservationPriceVote { },
+    ProposalVotes { prop_id: u32 },
+    Bid { },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FtokenQueryAnswer {
+    FtokenInfo {
+        ftkn_info: FtokenInfo,
+    },
+    FtokenConfig { 
+        ftkn_conf: FtokenConf,
+    },
+    AuctionConfig { 
+        auc_conf: AucConf,
+    },
+    ProposalConfig { 
+        prop_conf: PropConf,
+    },
+    ReservationPrice { 
+        ftokens_voted: Uint128,
+        reservation_price: Uint128,
+    },
+    ProposalList(Vec<PropInfoTally>),
+    BidList { 
+        bid_amounts: Vec<Uint128>,
+        total_bids: u64,
+    },
+    NftPrivateMetadata(PrivateMetadataResponse),
+    NftDossier(NftDossierResponse),
+    StakedTokens(StakedTokens),
+    ReservationPriceVote(ResvVote),
+    ProposalVotes(VoteRegister),
+    Bid(BidInfo),
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+// Messages between ftoken contract and underlying NFT
+/////////////////////////////////////////////////////////////////////////////////
 
 /// List of messages that is allowed to be sent to underlying NFT
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -157,7 +237,8 @@ pub enum S721HandleMsg {
     },
 }
 
-/// Query messages to be sent to SNIP721 contract 
+/// Query messages to be sent to SNIP721 contract. Uses viewing key for cross
+/// contract query, rather than permits
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum S721QueryMsg {
@@ -174,19 +255,55 @@ pub enum S721QueryMsg {
         /// false, expired Approvals will be filtered out of the response
         include_expired: Option<bool>,
     },
+    /// displays the private metadata if permitted to view it
+    PrivateMetadata {
+        token_id: String,
+        /// optional address and key requesting to view the private metadata
+        viewer: Option<ViewerInfo>,
+    },
+    /// displays all the information about a token that the viewer has permission to
+    /// see.  This may include the owner, the public metadata, the private metadata, royalty
+    /// information, mint run information, whether the token is unwrapped, whether the token is
+    /// transferable, and the token and inventory approvals
+    NftDossier {
+        token_id: String,
+        /// optional address and key requesting to view the token information
+        viewer: Option<ViewerInfo>,
+        /// optionally include expired Approvals in the response list.  If ommitted or
+        /// false, expired Approvals will be filtered out of the response
+        include_expired: Option<bool>,
+    },
 }
 
 impl Query for S721QueryMsg {
     const BLOCK_SIZE: usize = RESPONSE_BLOCK_SIZE;
 }
 
-/// Proposal
+/// wrapper to deserialize `PrivateMetadata` responses, with additional implementations
+/// /// above the standard implementation in `secret_toolkit`
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct PrivateMetadataResponse {
+    pub private_metadata: Metadata,
+}
+
+/// wrapper to deserialize `NftDossier` responses, with additional implementations
+/// above the standard implementation in `secret_toolkit`
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct NftDossierResponse {
+    pub nft_dossier: NftDossier,
+}
+
+/// DAO proposals that an ftoken holder can make. A minimum amount of tokens
+/// need to be staked along with proposals 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Proposal {
+    /// Proposal to send a message to the underlying NFT
     MsgToNft {
         msg: AllowedNftMsg,
     },
+    /// Proposals to change the ftoken configuration, which includes auction
+    /// configurations and DAO configurations
     ChangeConfig {
         config: FtokenConf,
     },
