@@ -203,12 +203,233 @@
           }
         }
       }
+    },
+    {
+      "type": "object",
+      "required": [
+        "ftoken_query"
+      ],
+      "properties": {
+        "ftoken_query": {
+          "$ref": "#/definitions/FtokenQuery"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "ftoken_vk_query"
+      ],
+      "properties": {
+        "ftoken_vk_query": {
+          "type": "object",
+          "required": [
+            "address",
+            "key",
+            "query"
+          ],
+          "properties": {
+            "address": {
+              "$ref": "#/definitions/HumanAddr"
+            },
+            "key": {
+              "type": "string"
+            },
+            "query": {
+              "$ref": "#/definitions/FtokenAuthQuery"
+            }
+          }
+        }
+      }
     }
   ],
   "definitions": {
     "Binary": {
       "description": "Binary is a wrapper around Vec<u8> to add base64 de/serialization with serde. It also adds some helper methods to help encode inline.\n\nThis is only needed as serde-json-{core,wasm} has a horrible encoding for Vec<u8>",
       "type": "string"
+    },
+    "FtokenAuthQuery": {
+      "description": "Authenticated queries (ie: required viewing key or query permit) that are specific to ftoken functionality (as opposed to standard SNIP20 queries)",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "nft_private_metadata"
+          ],
+          "properties": {
+            "nft_private_metadata": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "nft_dossier"
+          ],
+          "properties": {
+            "nft_dossier": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "staked_tokens"
+          ],
+          "properties": {
+            "staked_tokens": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "reservation_price_vote"
+          ],
+          "properties": {
+            "reservation_price_vote": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "proposal_votes"
+          ],
+          "properties": {
+            "proposal_votes": {
+              "type": "object",
+              "required": [
+                "prop_id"
+              ],
+              "properties": {
+                "prop_id": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bid"
+          ],
+          "properties": {
+            "bid": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "FtokenQuery": {
+      "description": "Public (ie: non authenticated) query messages that are specific to ftoken functionality (as opposed to standard SNIP20 queries)",
+      "anyOf": [
+        {
+          "description": "Information on the ftoken determined at the point of fractionalization",
+          "type": "object",
+          "required": [
+            "ftoken_info"
+          ],
+          "properties": {
+            "ftoken_info": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "description": "ftoken configuration, including auction and DAO parameters. These configurations can be changed through a DAO",
+          "type": "object",
+          "required": [
+            "ftoken_config"
+          ],
+          "properties": {
+            "ftoken_config": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "auction_config"
+          ],
+          "properties": {
+            "auction_config": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "proposal_config"
+          ],
+          "properties": {
+            "proposal_config": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "description": "The minimum amount that a bidder needs to bid (to buy out the underlying NFT) in order for the bid to be valid.",
+          "type": "object",
+          "required": [
+            "reservation_price"
+          ],
+          "properties": {
+            "reservation_price": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "description": "List of DAO proposals",
+          "type": "object",
+          "required": [
+            "proposal_list"
+          ],
+          "properties": {
+            "proposal_list": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bid_list"
+          ],
+          "properties": {
+            "bid_list": {
+              "type": "object",
+              "required": [
+                "page",
+                "page_size"
+              ],
+              "properties": {
+                "page": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0.0
+                },
+                "page_size": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0.0
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "HumanAddr": {
       "type": "string"
@@ -219,7 +440,13 @@
         "allowance",
         "balance",
         "history",
-        "owner"
+        "owner",
+        "nft_private_metadata",
+        "nft_dossier",
+        "staked_tokens",
+        "reservation_price_vote",
+        "proposal_votes",
+        "bid"
       ]
     },
     "Permit": {
@@ -393,6 +620,17 @@
                   "minimum": 0.0
                 }
               }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "ftoken_permit_query"
+          ],
+          "properties": {
+            "ftoken_permit_query": {
+              "$ref": "#/definitions/FtokenAuthQuery"
             }
           }
         }

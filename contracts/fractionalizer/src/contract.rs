@@ -242,7 +242,7 @@ fn instantiate_ftoken_contr_msg<S: Storage, A: Api, Q: Querier>(
     };
     
     let cosmos_msg = contract_msg.to_cosmos_msg(
-        "ftoken_contract".to_string(), 
+        ftkn_init.contract_label, 
         ftkn_id_hash_r(&deps.storage).load()?.code_id,
         callback_code_hash,
         None,

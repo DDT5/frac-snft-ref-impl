@@ -35,7 +35,7 @@ use crate::{
             try_vote_resv_price, try_bid, try_vote_proposal, try_finalize_auction,
             try_claim_proceeds, try_retrieve_bid,
             },
-        queries::{ftoken_queries, ftoken_permit_queries, debug_query},
+        queries::{ftoken_queries, ftoken_permit_queries}, //debug_query
     }
 };
 use crate::ftoken_mod::ft_permit::{validate, Permission, Permit, RevokedPermits};
@@ -398,7 +398,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
         // ftoken additions:
         QueryMsg::FtokenQuery(query) => ftoken_queries(deps, query),
         // temporary for DEBUGGING. Must remove for final implementation
-        QueryMsg::DebugQuery {} => debug_query(deps),
+        // QueryMsg::DebugQuery {} => debug_query(deps),
         _ => viewing_keys_queries(deps, msg),
     }
 }

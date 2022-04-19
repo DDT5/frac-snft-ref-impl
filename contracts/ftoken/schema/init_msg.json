@@ -4,6 +4,7 @@
   "type": "object",
   "required": [
     "decimals",
+    "init_info",
     "name",
     "prng_seed",
     "symbol"
@@ -34,6 +35,14 @@
       "format": "uint8",
       "minimum": 0.0
     },
+    "init_info": {
+      "description": "ftoken addition: fractionalizer contract hash and idx",
+      "allOf": [
+        {
+          "$ref": "#/definitions/FtokenContrInit"
+        }
+      ]
+    },
     "initial_balances": {
       "type": [
         "array",
@@ -54,9 +63,174 @@
     }
   },
   "definitions": {
+    "AucConf": {
+      "description": "ftoken config for bidding. Nested in a larger struct",
+      "type": "object",
+      "required": [
+        "auc_period",
+        "bid_token",
+        "min_bid_inc",
+        "resv_boundary",
+        "unlock_threshold"
+      ],
+      "properties": {
+        "auc_period": {
+          "description": "Number of blocks that a bid remains live before a finalize_vote_count tx can be called",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "bid_token": {
+          "description": "Determines the token that bids are made in (eg: sSCRT)",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ContractInfo"
+            }
+          ]
+        },
+        "min_bid_inc": {
+          "description": "Min bid increment proportion in basis points ie: 1/10_000. So a setting of 10 means that if the current highest bid is 100_000 tokens, the next bid needs to be at least 1/1000 higher, or 100_100 tokens",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "resv_boundary": {
+          "description": "User needs to vote a reservation price within this boundary. Boundary is the percentage above and below current reservation price. Floor = `current reservation price` * 100 / `minmax_boundary`. Ceiling = `current reservation price` * `minmax_boundary` / 100.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlock_threshold": {
+          "description": "Proportion of ftoken OF TOTAL SUPPLY before NFT gets unlocked. Unit in basis points (1/1000)",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        }
+      }
+    },
     "Binary": {
       "description": "Binary is a wrapper around Vec<u8> to add base64 de/serialization with serde. It also adds some helper methods to help encode inline.\n\nThis is only needed as serde-json-{core,wasm} has a horrible encoding for Vec<u8>",
       "type": "string"
+    },
+    "ContractInfo": {
+      "description": "code hash and address of a contract",
+      "type": "object",
+      "required": [
+        "address",
+        "code_hash"
+      ],
+      "properties": {
+        "address": {
+          "description": "Contract's address in HumanAddr",
+          "allOf": [
+            {
+              "$ref": "#/definitions/HumanAddr"
+            }
+          ]
+        },
+        "code_hash": {
+          "description": "Contract's code hash string",
+          "type": "string"
+        }
+      }
+    },
+    "FtokenConf": {
+      "description": "ftoken overall config which is stored in the ftoken contract. Sent as init in fractionalize tx, and stored in ftoken contract",
+      "type": "object",
+      "required": [
+        "auc_conf",
+        "min_ftkn_bond_prd",
+        "priv_metadata_view_threshold",
+        "prop_conf"
+      ],
+      "properties": {
+        "auc_conf": {
+          "description": "Configurations for auctions",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AucConf"
+            }
+          ]
+        },
+        "min_ftkn_bond_prd": {
+          "description": "Number of blocks that ftokens will be bonded after a vote (on reservation price or on proposals). Important to prevent vote spamming and manipulation",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "priv_metadata_view_threshold": {
+          "description": "Proportion of ftoken ownership required before private metadata of underlying NFT can be queried by ftoken owner. This needs to be done with authenticated query, either through viewing keys or viewing permit. Unit in basis points (ie: 1/10_000)",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "prop_conf": {
+          "description": "Configurations for proposals",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PropConf"
+            }
+          ]
+        }
+      }
+    },
+    "FtokenContrInit": {
+      "description": "Part of information sent from fractionalizer contract to ftoken contract on instantiation tx",
+      "type": "object",
+      "required": [
+        "depositor",
+        "fract_hash",
+        "ftkn_conf",
+        "ftkn_idx",
+        "init_resv_price",
+        "nft_info"
+      ],
+      "properties": {
+        "depositor": {
+          "description": "Depositor of NFT into fractionalizer",
+          "allOf": [
+            {
+              "$ref": "#/definitions/HumanAddr"
+            }
+          ]
+        },
+        "fract_hash": {
+          "description": "Contract hash of fractionalizer",
+          "type": "string"
+        },
+        "ftkn_conf": {
+          "description": "ftoken config which is stored in the ftoken contract",
+          "allOf": [
+            {
+              "$ref": "#/definitions/FtokenConf"
+            }
+          ]
+        },
+        "ftkn_idx": {
+          "description": "Index of ftoken contract. Starts from 0",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "init_resv_price": {
+          "description": "Initial reservation price which determines the initial min and max reservation price vote for the first user who votes on reservation price",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        },
+        "nft_info": {
+          "description": "Underlying NFT info",
+          "allOf": [
+            {
+              "$ref": "#/definitions/UndrNftInfo"
+            }
+          ]
+        }
+      }
     },
     "HumanAddr": {
       "type": "string"
@@ -117,8 +291,72 @@
         }
       }
     },
+    "PropConf": {
+      "description": "ftoken contract config for dao proposals. Nested in a larger struct",
+      "type": "object",
+      "required": [
+        "min_stake",
+        "veto_threshold",
+        "vote_period",
+        "vote_quorum"
+      ],
+      "properties": {
+        "min_stake": {
+          "description": "Minimum ftoken stake to make a proposal",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        },
+        "veto_threshold": {
+          "description": "Proportion of ftoken-weighted votes OF TOTAL SUPPLY that needs to vote `veto` for a veto to apply. Unit in basis points (1/1000)",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        },
+        "vote_period": {
+          "description": "Number of blocks that a proposal remains live before a finalization tx can be called",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "vote_quorum": {
+          "description": "Proportion of ftoken-weighted votes OF TOTAL SUPPLY before quorum is reached. Unit in basis points (1/1000)",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        }
+      }
+    },
     "Uint128": {
       "type": "string"
+    },
+    "UndrNftInfo": {
+      "description": "underlying NFT information",
+      "type": "object",
+      "required": [
+        "nft_contr",
+        "token_id"
+      ],
+      "properties": {
+        "nft_contr": {
+          "description": "Contract code hash and address of contract of underlying nft",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ContractInfo"
+            }
+          ]
+        },
+        "token_id": {
+          "description": "Token id of underlying nft",
+          "type": "string"
+        }
+      }
     }
   }
 }

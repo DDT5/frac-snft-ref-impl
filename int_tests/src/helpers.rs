@@ -243,6 +243,7 @@ pub(crate) fn fractionalize_default(app: &mut App) {
             symbol: "TKN".to_string(),
             supply: Uint128(100),
             decimals: 6u8,
+            contract_label: "myftokenlabel".to_string(),
             init_resv_price: Uint128(500),
             ftkn_conf: FtokenConf {
                 min_ftkn_bond_prd: 10u64,

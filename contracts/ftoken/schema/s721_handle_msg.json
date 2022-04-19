@@ -1,0 +1,331 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "S721HandleMsg",
+  "description": "List of messages that is allowed to be sent to underlying NFT",
+  "anyOf": [
+    {
+      "description": "set the public and/or private metadata.  This can be called by either the token owner or a valid minter if they have been given this power by the appropriate config values",
+      "type": "object",
+      "required": [
+        "set_metadata"
+      ],
+      "properties": {
+        "set_metadata": {
+          "type": "object",
+          "required": [
+            "token_id"
+          ],
+          "properties": {
+            "padding": {
+              "description": "optional message length padding",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "private_metadata": {
+              "description": "the optional new private metadata",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Metadata"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "public_metadata": {
+              "description": "the optional new public metadata",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Metadata"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "token_id": {
+              "description": "id of the token whose metadata should be updated",
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Reveal the private metadata of a sealed token and mark the token as having been unwrapped",
+      "type": "object",
+      "required": [
+        "reveal"
+      ],
+      "properties": {
+        "reveal": {
+          "type": "object",
+          "required": [
+            "token_id"
+          ],
+          "properties": {
+            "padding": {
+              "description": "optional message length padding",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "token_id": {
+              "description": "id of the token to unwrap",
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "if a contract was instantiated to make ownership public by default, this will allow an address to make the ownership of their tokens private.  The address can still use SetGlobalApproval to make ownership public either inventory-wide or for a specific token",
+      "type": "object",
+      "required": [
+        "make_ownership_private"
+      ],
+      "properties": {
+        "make_ownership_private": {
+          "type": "object",
+          "properties": {
+            "padding": {
+              "description": "optional message length padding",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "add/remove approval(s) that whitelist everyone (makes public)",
+      "type": "object",
+      "required": [
+        "set_global_approval"
+      ],
+      "properties": {
+        "set_global_approval": {
+          "type": "object",
+          "properties": {
+            "expires": {
+              "description": "optional expiration",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Expiration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "padding": {
+              "description": "optional message length padding",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "token_id": {
+              "description": "optional token id to apply approval/revocation to",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "view_owner": {
+              "description": "optional permission level for viewing the owner",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AccessLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "view_private_metadata": {
+              "description": "optional permission level for viewing private metadata",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AccessLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "add/remove approval(s) for a specific address on the token(s) you own.  Any permissions that are omitted will keep the current permission setting for that whitelist address",
+      "type": "object",
+      "required": [
+        "set_whitelisted_approval"
+      ],
+      "properties": {
+        "set_whitelisted_approval": {
+          "type": "object",
+          "required": [
+            "address"
+          ],
+          "properties": {
+            "address": {
+              "description": "address being granted/revoked permission",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/HumanAddr"
+                }
+              ]
+            },
+            "expires": {
+              "description": "optional expiration",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Expiration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "padding": {
+              "description": "optional message length padding",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "token_id": {
+              "description": "optional token id to apply approval/revocation to",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "transfer": {
+              "description": "optional permission level for transferring",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AccessLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "view_owner": {
+              "description": "optional permission level for viewing the owner",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AccessLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "view_private_metadata": {
+              "description": "optional permission level for viewing private metadata",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AccessLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "AccessLevel": {
+      "description": "permission access level",
+      "type": "string",
+      "enum": [
+        "approve_token",
+        "all",
+        "revoke_token",
+        "none"
+      ]
+    },
+    "Expiration": {
+      "description": "at the given point in time and after, Expiration will be considered expired",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "never"
+          ]
+        },
+        {
+          "description": "expires at this block height",
+          "type": "object",
+          "required": [
+            "at_height"
+          ],
+          "properties": {
+            "at_height": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "expires at the time in seconds since 01/01/1970",
+          "type": "object",
+          "required": [
+            "at_time"
+          ],
+          "properties": {
+            "at_time": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      ]
+    },
+    "HumanAddr": {
+      "type": "string"
+    },
+    "Metadata": {
+      "description": "token metadata",
+      "type": "object",
+      "properties": {
+        "description": {
+          "description": "optional description",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "image": {
+          "description": "optional uri to contain an image, additional data fields, etc...",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "optional indentifier",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,5 +1,35 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "InitMsg",
-  "type": "object"
+  "type": "object",
+  "required": [
+    "uploaded_ftoken"
+  ],
+  "properties": {
+    "uploaded_ftoken": {
+      "$ref": "#/definitions/UploadedFtkn"
+    }
+  },
+  "definitions": {
+    "UploadedFtkn": {
+      "description": "the code_id and code hash of the ftoken contract code that has been uploaded",
+      "type": "object",
+      "required": [
+        "code_hash",
+        "code_id"
+      ],
+      "properties": {
+        "code_hash": {
+          "description": "code hash of uploaded ftoken contract",
+          "type": "string"
+        },
+        "code_id": {
+          "description": "code_id of uploaded ftoken contract",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    }
+  }
 }

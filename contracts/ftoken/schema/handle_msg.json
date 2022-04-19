@@ -796,8 +796,302 @@
             "permit_name"
           ],
           "properties": {
+            "padding": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "permit_name": {
               "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "ftoken additions: SNIP721 receiver Receiver interface function for SNIP721 contract. Msg to be received from SNIP721 contract BatchReceiveNft may be a HandleMsg variant of any contract that wants to implement a receiver interface.  BatchReceiveNft, which is more informative and more efficient, is preferred over ReceiveNft.",
+      "type": "object",
+      "required": [
+        "batch_receive_nft"
+      ],
+      "properties": {
+        "batch_receive_nft": {
+          "type": "object",
+          "required": [
+            "from",
+            "sender",
+            "token_ids"
+          ],
+          "properties": {
+            "from": {
+              "description": "previous owner of sent tokens.  This is equivalent to the ReceiveNft `sender` field",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/HumanAddr"
+                }
+              ]
+            },
+            "msg": {
+              "description": "optional message to control receiving logic",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Binary"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sender": {
+              "description": "address that sent the tokens.  There is no ReceiveNft field equivalent to this",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/HumanAddr"
+                }
+              ]
+            },
+            "token_ids": {
+              "description": "tokens that were sent",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Bidder calls this function to place a bid for underlying NFT. Bid needs to be at least as large as the reservation price, otherwise the tx is invalid",
+      "type": "object",
+      "required": [
+        "bid"
+      ],
+      "properties": {
+        "bid": {
+          "type": "object",
+          "required": [
+            "amount"
+          ],
+          "properties": {
+            "amount": {
+              "description": "bid amount denominated in the smallest denomination of the token",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Uint128"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Stake ftokens. Ftoken holders need to stake ftokens before voting on either proposals or the reservation price. Staked ftokens will be bonded for a period specified by the configuration",
+      "type": "object",
+      "required": [
+        "stake"
+      ],
+      "properties": {
+        "stake": {
+          "type": "object",
+          "required": [
+            "amount"
+          ],
+          "properties": {
+            "amount": {
+              "description": "The amount that the ftoken holder wishes to stake",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Uint128"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Unstake ftokens. Ftoken holders can unstake ftokens after the bonding period",
+      "type": "object",
+      "required": [
+        "unstake"
+      ],
+      "properties": {
+        "unstake": {
+          "type": "object",
+          "required": [
+            "amount"
+          ],
+          "properties": {
+            "amount": {
+              "description": "The amount that the ftoken holder wishes to unstake",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Uint128"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Votes for DAO proposals to change configuration of the ftokens or send messages to the underlying NFT",
+      "type": "object",
+      "required": [
+        "vote_proposal"
+      ],
+      "properties": {
+        "vote_proposal": {
+          "type": "object",
+          "required": [
+            "prop_id",
+            "vote"
+          ],
+          "properties": {
+            "prop_id": {
+              "description": "The proposal ID",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "vote": {
+              "description": "The vote that the user wishes to cast on the proposal",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Vote"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "finalize_auction"
+      ],
+      "properties": {
+        "finalize_auction": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "description": "Message bidder calls to retrieve underlying NFT after winning a bid If a bidder fails to win an auction, the bidder can retrieve its bid after the auction period if over",
+      "type": "object",
+      "required": [
+        "retrieve_bid"
+      ],
+      "properties": {
+        "retrieve_bid": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "description": "Once an underlying NFT is bought out, ftoken holders can claim their pro-rata share of sales proceeds",
+      "type": "object",
+      "required": [
+        "claim_proceeds"
+      ],
+      "properties": {
+        "claim_proceeds": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "description": "Make a DAO proposal",
+      "type": "object",
+      "required": [
+        "propose"
+      ],
+      "properties": {
+        "propose": {
+          "type": "object",
+          "required": [
+            "proposal",
+            "stake"
+          ],
+          "properties": {
+            "proposal": {
+              "$ref": "#/definitions/Proposal"
+            },
+            "stake": {
+              "description": "Users need to stake a certain number of ftokens when making proposals, which is set initially and can be later configured through the DAO. This stake can be retrieve once the proposal's voting period is over and the outcome finalized. Proposers lose their stake if their proposal outcome is `LostWithVeto`",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Uint128"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Once a proposal reaches the end of its voting period, anyone may call this transaction to simultaneously finalize the vote count and execute the proposal",
+      "type": "object",
+      "required": [
+        "finalize_execute_prop"
+      ],
+      "properties": {
+        "finalize_execute_prop": {
+          "type": "object",
+          "required": [
+            "prop_id"
+          ],
+          "properties": {
+            "prop_id": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Proposers may retrieve their staked ftokens after proposals are finalized and executed. This stake is lost if the vote outcome is `LostWithVeto`",
+      "type": "object",
+      "required": [
+        "retrieve_prop_stake"
+      ],
+      "properties": {
+        "retrieve_prop_stake": {
+          "type": "object",
+          "required": [
+            "prop_id"
+          ],
+          "properties": {
+            "prop_id": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "ftoken holders whic have staked ftokens may vote a reservation price for the underlying NFT. The weighted average votes on reservation price will be the minimum bid amount that bidders need to make to buy out the underlying NFT",
+      "type": "object",
+      "required": [
+        "vote_reservation_price"
+      ],
+      "properties": {
+        "vote_reservation_price": {
+          "type": "object",
+          "required": [
+            "resv_price"
+          ],
+          "properties": {
+            "resv_price": {
+              "$ref": "#/definitions/Uint128"
             }
           }
         }
@@ -805,6 +1099,215 @@
     }
   ],
   "definitions": {
+    "AccessLevel": {
+      "description": "permission access level",
+      "type": "string",
+      "enum": [
+        "approve_token",
+        "all",
+        "revoke_token",
+        "none"
+      ]
+    },
+    "AllowedNftMsg": {
+      "description": "List of messages that is allowed to be sent to underlying NFT. ftoken holders can propose to send these messages to the underlying NFT, where other ftoken holders vote on whether to accept the proposal. Once a proposal passes, a transaction can be triggered to send the proposed message to the underlying NFT",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "set_metadata"
+          ],
+          "properties": {
+            "set_metadata": {
+              "type": "object",
+              "properties": {
+                "private_metadata": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Metadata"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "public_metadata": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Metadata"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "reveal"
+          ],
+          "properties": {
+            "reveal": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "make_ownership_private"
+          ],
+          "properties": {
+            "make_ownership_private": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "set_global_approval"
+          ],
+          "properties": {
+            "set_global_approval": {
+              "type": "object",
+              "properties": {
+                "expires": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Expiration"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "view_owner": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/AccessLevel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "view_private_metadata": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/AccessLevel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "set_whitelisted_approval"
+          ],
+          "properties": {
+            "set_whitelisted_approval": {
+              "type": "object",
+              "required": [
+                "address"
+              ],
+              "properties": {
+                "address": {
+                  "$ref": "#/definitions/HumanAddr"
+                },
+                "expires": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Expiration"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "view_owner": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/AccessLevel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "view_private_metadata": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/AccessLevel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "AucConf": {
+      "description": "ftoken config for bidding. Nested in a larger struct",
+      "type": "object",
+      "required": [
+        "auc_period",
+        "bid_token",
+        "min_bid_inc",
+        "resv_boundary",
+        "unlock_threshold"
+      ],
+      "properties": {
+        "auc_period": {
+          "description": "Number of blocks that a bid remains live before a finalize_vote_count tx can be called",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "bid_token": {
+          "description": "Determines the token that bids are made in (eg: sSCRT)",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ContractInfo"
+            }
+          ]
+        },
+        "min_bid_inc": {
+          "description": "Min bid increment proportion in basis points ie: 1/10_000. So a setting of 10 means that if the current highest bid is 100_000 tokens, the next bid needs to be at least 1/1000 higher, or 100_100 tokens",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "resv_boundary": {
+          "description": "User needs to vote a reservation price within this boundary. Boundary is the percentage above and below current reservation price. Floor = `current reservation price` * 100 / `minmax_boundary`. Ceiling = `current reservation price` * `minmax_boundary` / 100.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlock_threshold": {
+          "description": "Proportion of ftoken OF TOTAL SUPPLY before NFT gets unlocked. Unit in basis points (1/1000)",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        }
+      }
+    },
     "Binary": {
       "description": "Binary is a wrapper around Vec<u8> to add base64 de/serialization with serde. It also adds some helper methods to help encode inline.\n\nThis is only needed as serde-json-{core,wasm} has a horrible encoding for Vec<u8>",
       "type": "string"
@@ -830,6 +1333,28 @@
         }
       }
     },
+    "ContractInfo": {
+      "description": "code hash and address of a contract",
+      "type": "object",
+      "required": [
+        "address",
+        "code_hash"
+      ],
+      "properties": {
+        "address": {
+          "description": "Contract's address in HumanAddr",
+          "allOf": [
+            {
+              "$ref": "#/definitions/HumanAddr"
+            }
+          ]
+        },
+        "code_hash": {
+          "description": "Contract's code hash string",
+          "type": "string"
+        }
+      }
+    },
     "ContractStatusLevel": {
       "type": "string",
       "enum": [
@@ -838,8 +1363,114 @@
         "stop_all"
       ]
     },
+    "Expiration": {
+      "description": "at the given point in time and after, Expiration will be considered expired",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "never"
+          ]
+        },
+        {
+          "description": "expires at this block height",
+          "type": "object",
+          "required": [
+            "at_height"
+          ],
+          "properties": {
+            "at_height": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "expires at the time in seconds since 01/01/1970",
+          "type": "object",
+          "required": [
+            "at_time"
+          ],
+          "properties": {
+            "at_time": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      ]
+    },
+    "FtokenConf": {
+      "description": "ftoken overall config which is stored in the ftoken contract. Sent as init in fractionalize tx, and stored in ftoken contract",
+      "type": "object",
+      "required": [
+        "auc_conf",
+        "min_ftkn_bond_prd",
+        "priv_metadata_view_threshold",
+        "prop_conf"
+      ],
+      "properties": {
+        "auc_conf": {
+          "description": "Configurations for auctions",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AucConf"
+            }
+          ]
+        },
+        "min_ftkn_bond_prd": {
+          "description": "Number of blocks that ftokens will be bonded after a vote (on reservation price or on proposals). Important to prevent vote spamming and manipulation",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "priv_metadata_view_threshold": {
+          "description": "Proportion of ftoken ownership required before private metadata of underlying NFT can be queried by ftoken owner. This needs to be done with authenticated query, either through viewing keys or viewing permit. Unit in basis points (ie: 1/10_000)",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "prop_conf": {
+          "description": "Configurations for proposals",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PropConf"
+            }
+          ]
+        }
+      }
+    },
     "HumanAddr": {
       "type": "string"
+    },
+    "Metadata": {
+      "description": "token metadata",
+      "type": "object",
+      "properties": {
+        "description": {
+          "description": "optional description",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "image": {
+          "description": "optional uri to contain an image, additional data fields, etc...",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "optional indentifier",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
     },
     "MintAction": {
       "type": "object",
@@ -861,6 +1492,93 @@
           "$ref": "#/definitions/HumanAddr"
         }
       }
+    },
+    "PropConf": {
+      "description": "ftoken contract config for dao proposals. Nested in a larger struct",
+      "type": "object",
+      "required": [
+        "min_stake",
+        "veto_threshold",
+        "vote_period",
+        "vote_quorum"
+      ],
+      "properties": {
+        "min_stake": {
+          "description": "Minimum ftoken stake to make a proposal",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        },
+        "veto_threshold": {
+          "description": "Proportion of ftoken-weighted votes OF TOTAL SUPPLY that needs to vote `veto` for a veto to apply. Unit in basis points (1/1000)",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        },
+        "vote_period": {
+          "description": "Number of blocks that a proposal remains live before a finalization tx can be called",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "vote_quorum": {
+          "description": "Proportion of ftoken-weighted votes OF TOTAL SUPPLY before quorum is reached. Unit in basis points (1/1000)",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        }
+      }
+    },
+    "Proposal": {
+      "description": "DAO proposals that an ftoken holder can make. A minimum amount of tokens need to be staked along with proposals",
+      "anyOf": [
+        {
+          "description": "Proposal to send a message to the underlying NFT",
+          "type": "object",
+          "required": [
+            "msg_to_nft"
+          ],
+          "properties": {
+            "msg_to_nft": {
+              "type": "object",
+              "required": [
+                "msg"
+              ],
+              "properties": {
+                "msg": {
+                  "$ref": "#/definitions/AllowedNftMsg"
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "Proposals to change the ftoken configuration, which includes auction configurations and DAO configurations",
+          "type": "object",
+          "required": [
+            "change_config"
+          ],
+          "properties": {
+            "change_config": {
+              "type": "object",
+              "required": [
+                "config"
+              ],
+              "properties": {
+                "config": {
+                  "$ref": "#/definitions/FtokenConf"
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "SendAction": {
       "type": "object",
@@ -988,6 +1706,16 @@
     },
     "Uint128": {
       "type": "string"
+    },
+    "Vote": {
+      "description": "Vote cast on proposals",
+      "type": "string",
+      "enum": [
+        "yes",
+        "no",
+        "veto",
+        "abstain"
+      ]
     }
   }
 }

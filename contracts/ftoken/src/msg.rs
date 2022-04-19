@@ -501,7 +501,7 @@ pub enum QueryMsg {
         query: FtokenAuthQuery,
     },
     // temporary for DEBUGGING. Must remove for final implementation
-    DebugQuery {  },
+    // DebugQuery {  },
 }
 
 impl QueryMsg {

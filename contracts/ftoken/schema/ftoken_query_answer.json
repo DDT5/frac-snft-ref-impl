@@ -1,319 +1,211 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "QueryAnswer",
+  "title": "FtokenQueryAnswer",
   "anyOf": [
     {
       "type": "object",
       "required": [
-        "token_info"
+        "ftoken_info"
       ],
       "properties": {
-        "token_info": {
+        "ftoken_info": {
           "type": "object",
           "required": [
-            "decimals",
-            "name",
-            "symbol"
+            "ftkn_info"
           ],
           "properties": {
-            "decimals": {
-              "type": "integer",
-              "format": "uint8",
-              "minimum": 0.0
-            },
-            "name": {
-              "type": "string"
-            },
-            "symbol": {
-              "type": "string"
-            },
-            "total_supply": {
-              "anyOf": [
-                {
-                  "$ref": "#/definitions/Uint128"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
-        "token_config"
-      ],
-      "properties": {
-        "token_config": {
-          "type": "object",
-          "required": [
-            "burn_enabled",
-            "deposit_enabled",
-            "mint_enabled",
-            "public_total_supply",
-            "redeem_enabled"
-          ],
-          "properties": {
-            "burn_enabled": {
-              "type": "boolean"
-            },
-            "deposit_enabled": {
-              "type": "boolean"
-            },
-            "mint_enabled": {
-              "type": "boolean"
-            },
-            "public_total_supply": {
-              "type": "boolean"
-            },
-            "redeem_enabled": {
-              "type": "boolean"
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
-        "contract_status"
-      ],
-      "properties": {
-        "contract_status": {
-          "type": "object",
-          "required": [
-            "status"
-          ],
-          "properties": {
-            "status": {
-              "$ref": "#/definitions/ContractStatusLevel"
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
-        "exchange_rate"
-      ],
-      "properties": {
-        "exchange_rate": {
-          "type": "object",
-          "required": [
-            "denom",
-            "rate"
-          ],
-          "properties": {
-            "denom": {
-              "type": "string"
-            },
-            "rate": {
-              "$ref": "#/definitions/Uint128"
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
-        "allowance"
-      ],
-      "properties": {
-        "allowance": {
-          "type": "object",
-          "required": [
-            "allowance",
-            "owner",
-            "spender"
-          ],
-          "properties": {
-            "allowance": {
-              "$ref": "#/definitions/Uint128"
-            },
-            "expiration": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "owner": {
-              "$ref": "#/definitions/HumanAddr"
-            },
-            "spender": {
-              "$ref": "#/definitions/HumanAddr"
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
-        "balance"
-      ],
-      "properties": {
-        "balance": {
-          "type": "object",
-          "required": [
-            "amount"
-          ],
-          "properties": {
-            "amount": {
-              "$ref": "#/definitions/Uint128"
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
-        "transfer_history"
-      ],
-      "properties": {
-        "transfer_history": {
-          "type": "object",
-          "required": [
-            "txs"
-          ],
-          "properties": {
-            "total": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "txs": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/Tx"
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
-        "transaction_history"
-      ],
-      "properties": {
-        "transaction_history": {
-          "type": "object",
-          "required": [
-            "txs"
-          ],
-          "properties": {
-            "total": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "txs": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/RichTx"
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
-        "viewing_key_error"
-      ],
-      "properties": {
-        "viewing_key_error": {
-          "type": "object",
-          "required": [
-            "msg"
-          ],
-          "properties": {
-            "msg": {
-              "type": "string"
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
-        "minters"
-      ],
-      "properties": {
-        "minters": {
-          "type": "object",
-          "required": [
-            "minters"
-          ],
-          "properties": {
-            "minters": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/HumanAddr"
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
-        "ftoken_query_answer"
-      ],
-      "properties": {
-        "ftoken_query_answer": {
-          "$ref": "#/definitions/FtokenQueryAnswer"
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
-        "debug_q_answer"
-      ],
-      "properties": {
-        "debug_q_answer": {
-          "type": "object",
-          "required": [
-            "ftkn_config",
-            "ftokeninfo",
-            "next_prop_id",
-            "nftviewingkey"
-          ],
-          "properties": {
-            "ftkn_config": {
-              "$ref": "#/definitions/FtokenConf"
-            },
-            "ftokeninfo": {
+            "ftkn_info": {
               "$ref": "#/definitions/FtokenInfo"
-            },
-            "next_prop_id": {
-              "type": "integer",
-              "format": "uint32",
-              "minimum": 0.0
-            },
-            "nftviewingkey": {
-              "$ref": "#/definitions/ViewingKey"
             }
           }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "ftoken_config"
+      ],
+      "properties": {
+        "ftoken_config": {
+          "type": "object",
+          "required": [
+            "ftkn_conf"
+          ],
+          "properties": {
+            "ftkn_conf": {
+              "$ref": "#/definitions/FtokenConf"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "auction_config"
+      ],
+      "properties": {
+        "auction_config": {
+          "type": "object",
+          "required": [
+            "auc_conf"
+          ],
+          "properties": {
+            "auc_conf": {
+              "$ref": "#/definitions/AucConf"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "proposal_config"
+      ],
+      "properties": {
+        "proposal_config": {
+          "type": "object",
+          "required": [
+            "prop_conf"
+          ],
+          "properties": {
+            "prop_conf": {
+              "$ref": "#/definitions/PropConf"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "reservation_price"
+      ],
+      "properties": {
+        "reservation_price": {
+          "type": "object",
+          "required": [
+            "ftokens_voted",
+            "reservation_price"
+          ],
+          "properties": {
+            "ftokens_voted": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "reservation_price": {
+              "$ref": "#/definitions/Uint128"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "proposal_list"
+      ],
+      "properties": {
+        "proposal_list": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PropInfoTally"
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "bid_list"
+      ],
+      "properties": {
+        "bid_list": {
+          "type": "object",
+          "required": [
+            "bid_amounts",
+            "total_bids"
+          ],
+          "properties": {
+            "bid_amounts": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Uint128"
+              }
+            },
+            "total_bids": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "nft_private_metadata"
+      ],
+      "properties": {
+        "nft_private_metadata": {
+          "$ref": "#/definitions/PrivateMetadataResponse"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "nft_dossier"
+      ],
+      "properties": {
+        "nft_dossier": {
+          "$ref": "#/definitions/NftDossierResponse"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "staked_tokens"
+      ],
+      "properties": {
+        "staked_tokens": {
+          "$ref": "#/definitions/StakedTokens"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "reservation_price_vote"
+      ],
+      "properties": {
+        "reservation_price_vote": {
+          "$ref": "#/definitions/ResvVote"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "proposal_votes"
+      ],
+      "properties": {
+        "proposal_votes": {
+          "$ref": "#/definitions/VoteRegister"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "bid"
+      ],
+      "properties": {
+        "bid": {
+          "$ref": "#/definitions/BidInfo"
         }
       }
     }
@@ -559,21 +451,6 @@
         }
       }
     },
-    "Coin": {
-      "type": "object",
-      "required": [
-        "amount",
-        "denom"
-      ],
-      "properties": {
-        "amount": {
-          "$ref": "#/definitions/Uint128"
-        },
-        "denom": {
-          "type": "string"
-        }
-      }
-    },
     "ContractInfo": {
       "description": "code hash and address of a contract",
       "type": "object",
@@ -595,14 +472,6 @@
           "type": "string"
         }
       }
-    },
-    "ContractStatusLevel": {
-      "type": "string",
-      "enum": [
-        "normal_run",
-        "stop_all_but_redeems",
-        "stop_all"
-      ]
     },
     "Expiration": {
       "description": "at the given point in time and after, Expiration will be considered expired",
@@ -763,217 +632,6 @@
           "type": "string"
         }
       }
-    },
-    "FtokenQueryAnswer": {
-      "anyOf": [
-        {
-          "type": "object",
-          "required": [
-            "ftoken_info"
-          ],
-          "properties": {
-            "ftoken_info": {
-              "type": "object",
-              "required": [
-                "ftkn_info"
-              ],
-              "properties": {
-                "ftkn_info": {
-                  "$ref": "#/definitions/FtokenInfo"
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "ftoken_config"
-          ],
-          "properties": {
-            "ftoken_config": {
-              "type": "object",
-              "required": [
-                "ftkn_conf"
-              ],
-              "properties": {
-                "ftkn_conf": {
-                  "$ref": "#/definitions/FtokenConf"
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "auction_config"
-          ],
-          "properties": {
-            "auction_config": {
-              "type": "object",
-              "required": [
-                "auc_conf"
-              ],
-              "properties": {
-                "auc_conf": {
-                  "$ref": "#/definitions/AucConf"
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "proposal_config"
-          ],
-          "properties": {
-            "proposal_config": {
-              "type": "object",
-              "required": [
-                "prop_conf"
-              ],
-              "properties": {
-                "prop_conf": {
-                  "$ref": "#/definitions/PropConf"
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "reservation_price"
-          ],
-          "properties": {
-            "reservation_price": {
-              "type": "object",
-              "required": [
-                "ftokens_voted",
-                "reservation_price"
-              ],
-              "properties": {
-                "ftokens_voted": {
-                  "$ref": "#/definitions/Uint128"
-                },
-                "reservation_price": {
-                  "$ref": "#/definitions/Uint128"
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "proposal_list"
-          ],
-          "properties": {
-            "proposal_list": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/PropInfoTally"
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "bid_list"
-          ],
-          "properties": {
-            "bid_list": {
-              "type": "object",
-              "required": [
-                "bid_amounts",
-                "total_bids"
-              ],
-              "properties": {
-                "bid_amounts": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/Uint128"
-                  }
-                },
-                "total_bids": {
-                  "type": "integer",
-                  "format": "uint64",
-                  "minimum": 0.0
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "nft_private_metadata"
-          ],
-          "properties": {
-            "nft_private_metadata": {
-              "$ref": "#/definitions/PrivateMetadataResponse"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "nft_dossier"
-          ],
-          "properties": {
-            "nft_dossier": {
-              "$ref": "#/definitions/NftDossierResponse"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "staked_tokens"
-          ],
-          "properties": {
-            "staked_tokens": {
-              "$ref": "#/definitions/StakedTokens"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "reservation_price_vote"
-          ],
-          "properties": {
-            "reservation_price_vote": {
-              "$ref": "#/definitions/ResvVote"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "proposal_votes"
-          ],
-          "properties": {
-            "proposal_votes": {
-              "$ref": "#/definitions/VoteRegister"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "bid"
-          ],
-          "properties": {
-            "bid": {
-              "$ref": "#/definitions/BidInfo"
-            }
-          }
-        }
-      ]
     },
     "HumanAddr": {
       "type": "string"
@@ -1326,45 +984,6 @@
         }
       }
     },
-    "RichTx": {
-      "type": "object",
-      "required": [
-        "action",
-        "block_height",
-        "block_time",
-        "coins",
-        "id"
-      ],
-      "properties": {
-        "action": {
-          "$ref": "#/definitions/TxAction"
-        },
-        "block_height": {
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0.0
-        },
-        "block_time": {
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0.0
-        },
-        "coins": {
-          "$ref": "#/definitions/Coin"
-        },
-        "id": {
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0.0
-        },
-        "memo": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
-    },
     "Snip721Approval": {
       "description": "SNIP721 Approval",
       "type": "object",
@@ -1432,156 +1051,6 @@
         }
       }
     },
-    "Tx": {
-      "type": "object",
-      "required": [
-        "coins",
-        "from",
-        "id",
-        "receiver",
-        "sender"
-      ],
-      "properties": {
-        "block_height": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0.0
-        },
-        "block_time": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0.0
-        },
-        "coins": {
-          "$ref": "#/definitions/Coin"
-        },
-        "from": {
-          "$ref": "#/definitions/HumanAddr"
-        },
-        "id": {
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0.0
-        },
-        "memo": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "receiver": {
-          "$ref": "#/definitions/HumanAddr"
-        },
-        "sender": {
-          "$ref": "#/definitions/HumanAddr"
-        }
-      }
-    },
-    "TxAction": {
-      "anyOf": [
-        {
-          "type": "object",
-          "required": [
-            "transfer"
-          ],
-          "properties": {
-            "transfer": {
-              "type": "object",
-              "required": [
-                "from",
-                "recipient",
-                "sender"
-              ],
-              "properties": {
-                "from": {
-                  "$ref": "#/definitions/HumanAddr"
-                },
-                "recipient": {
-                  "$ref": "#/definitions/HumanAddr"
-                },
-                "sender": {
-                  "$ref": "#/definitions/HumanAddr"
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "mint"
-          ],
-          "properties": {
-            "mint": {
-              "type": "object",
-              "required": [
-                "minter",
-                "recipient"
-              ],
-              "properties": {
-                "minter": {
-                  "$ref": "#/definitions/HumanAddr"
-                },
-                "recipient": {
-                  "$ref": "#/definitions/HumanAddr"
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "burn"
-          ],
-          "properties": {
-            "burn": {
-              "type": "object",
-              "required": [
-                "burner",
-                "owner"
-              ],
-              "properties": {
-                "burner": {
-                  "$ref": "#/definitions/HumanAddr"
-                },
-                "owner": {
-                  "$ref": "#/definitions/HumanAddr"
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "deposit"
-          ],
-          "properties": {
-            "deposit": {
-              "type": "object"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "redeem"
-          ],
-          "properties": {
-            "redeem": {
-              "type": "object"
-            }
-          }
-        }
-      ]
-    },
     "Uint128": {
       "type": "string"
     },
@@ -1606,9 +1075,6 @@
           "type": "string"
         }
       }
-    },
-    "ViewingKey": {
-      "type": "string"
     },
     "VoteRegister": {
       "type": "object",

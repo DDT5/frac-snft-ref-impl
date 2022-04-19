@@ -17,19 +17,19 @@ declare -A FROM=(
     [d]='-y --from d'
 )
 
-# This means we don't need to configure the cli since it uses the preconfigured cli in the docker.
-# We define this as a function rather than as an alias because it has more flexible expansion behavior.
-# In particular, it's not possible to dynamically expand aliases, but `tx_of` dynamically executes whatever
-# we specify in its arguments.
-function secretcli() {
-    docker exec secretdev /usr/bin/secretd "$@"
-}
-
-# # Alternative to above, when interactively using cli
-# # docker exec -it secretdev /bin/bash
+# # This means we don't need to configure the cli since it uses the preconfigured cli in the docker.
+# # We define this as a function rather than as an alias because it has more flexible expansion behavior.
+# # In particular, it's not possible to dynamically expand aliases, but `tx_of` dynamically executes whatever
+# # we specify in its arguments.
 # function secretcli() {
-#     secretd "$@"
-# };
+#     docker exec secretdev /usr/bin/secretd "$@"
+# }
+
+# Alternative to above, when interactively using cli
+# docker exec -it secretdev /bin/bash
+function secretcli() {
+    secretd "$@"
+};
 
 
 # Just like `echo`, but prints to stderr
@@ -463,11 +463,19 @@ function doInit() {
         "prng_seed":"'"$prng_seed"'",
         "initial_balances":[{
             "address":"'"${ADDRESS[a]}"'",
-            "amount":"100"
+            "amount":"1000"
+            },
+            {
+            "address":"'"${ADDRESS[b]}"'",
+            "amount":"1000"
             },
             {
             "address":"'"${ADDRESS[c]}"'",
-            "amount":"100"
+            "amount":"1000"
+            },
+            {
+            "address":"'"${ADDRESS[d]}"'",
+            "amount":"1000"
             }
         ],
         "config":{
@@ -552,20 +560,26 @@ function doFractionalize() {
                 "symbol":"FTKN",
                 "supply":"'"$supply"'",
                 "decimals":6,
+                "contract_label":"ftokencoinlabel",
+                "init_resv_price":"100",
                 "ftkn_conf":{
-                    "bid_conf":{
+                    "min_ftkn_bond_prd":1,
+                    "priv_metadata_view_threshold":5000,
+                    "auc_conf":{
                         "bid_token":{
                             "code_hash":"'"$sscrt_h"'",
                             "address":"'"$sscrt"'"
                         },
-                        "min_ftkn_bond_prd":1,
-                        "bid_period":2,
-                        "bid_vote_quorum":"1000"
+                        "auc_period":2,
+                        "resv_boundary":500,
+                        "min_bid_inc":1000,
+                        "unlock_threshold":"5000"
                     },
                     "prop_conf":{
-                        "prop_period":5,
-                        "prop_vote_quorum":"200",
-                        "min_stake":"20"
+                        "min_stake":"20",
+                        "vote_period":5,
+                        "vote_quorum":"200",
+                        "veto_threshold":"1000"
                     }
                 }
             }
@@ -607,74 +621,92 @@ function s20_balance() {
 
 function doUnfractionalize() {
     # `a` and `b` stake their ftokens
-    ftkn_a=$(("$supply" - "$transfer"))
-    ftkn_b="$transfer"
-    msg='{"stake":{"amount":"'"$ftkn_a"'"}}'
+    stake_a=$(("$supply" - "$transfer"))
+    stake_b="$transfer"
+    msg='{"stake":{"amount":"'"$stake_a"'"}}'
     handle "$ftoken0" "$msg" a
-    msg='{"stake":{"amount":"'"$ftkn_b"'"}}'
+    msg='{"stake":{"amount":"'"$stake_b"'"}}'
     handle_w "$ftoken0" "$msg" b
     bal_a="$(s20_balance "$ftoken0" "${ADDRESS[a]}" "${VK_token[a]}")"
     bal_b="$(s20_balance "$ftoken0" "${ADDRESS[b]}" "${VK_token[b]}")"
     assert_eq "$bal_a" 0
     assert_eq "$bal_b" 0
 
+    # `b` casts reservation price votes
+    # reservation price vote fails because below floor
+    msg='{"vote_reservation_price":{"resv_price":"10"}}'
+    resp="$(handle_w "$ftoken0" "$msg" a)"
+    assert_eq "$(get_generic_err "$resp")" "Reserve price out of bounds. Please set between 20 and 500" 
+    
+    # reservation price vote fails because above ceiling
+    msg='{"vote_reservation_price":{"resv_price":"1000"}}'
+    resp="$(handle_w "$ftoken0" "$msg" a)"
+    assert_eq "$(get_generic_err "$resp")" "Reserve price out of bounds. Please set between 20 and 500" 
+
+    # `b`'s reservation price vote succeeds --> but vault not yet unlocked
+    msg='{"vote_reservation_price":{"resv_price":"70"}}'
+    handle_w "$ftoken0" "$msg" b
+    
     # `c` give ftoken permission to spend sscrt
     msg='{"increase_allowance":{"spender":"'"$ftoken0"'","amount":"1000"}}'
     handle_w "$sscrt" "$msg" c
 
-    # `c` places bid for underlying nft
-    msg='{"bid":{"amount":"30"}}'
-    handle_w "$ftoken0" "$msg" c
-    # `c` now has 70 sscrt
-    bal="$(s20_balance "$sscrt" "${ADDRESS[c]}" "${VK_sscrt[c]}")"
-    assert_eq "$bal" 70
+    # `c` places bid for underlying nft -- fails because threshold votes on reservation price not yet met
+    c_bal="$(s20_balance "$sscrt" "${ADDRESS[c]}" "${VK_sscrt[c]}")"
+    msg='{"bid":{"amount":"150"}}'
+    resp="$(handle_w "$ftoken0" "$msg" c)"
+    assert_eq "$(get_generic_err "$resp")" "vault is not unlocked. Unlock threshold is 5000 basis points (unit of 1/10000); only 2999 basis points of ftokens have voted" 
 
-    # finalize vote count. no votes => does not reach quorum
-    sleep 6
-    msg='{"finalize_bid_vote_count":{"bid_id":0}}'
+    # now `a` also votes on reservation price --> should unlock the vault
+    msg='{"vote_reservation_price":{"resv_price":"120"}}'
     handle_w "$ftoken0" "$msg" a
+    # reservatin price now == 105
+    resv_price="$(compute_query "$ftoken0" '{"ftoken_query":{"reservation_price":{}}}')"
+    resv_price="$(echo "$resv_price" | jq -r '.ftoken_query_answer.reservation_price.reservation_price')"
+    assert_eq "$resv_price" 105
 
-    # bidder can retrieve bid
-    msg='{"retrieve_bid":{"bid_id":0}}'
-    handle_w "$ftoken0" "$msg" c
-    # assert: `c` now has 100 sscrt again
+    # `c` places bid for underlying nft, at reservation price --> succeeds now
+    msg='{"bid":{"amount":"105"}}'
+    resp="$(handle_w "$ftoken0" "$msg" c)"
+    # `c` now has 1000-105 sscrt
     bal="$(s20_balance "$sscrt" "${ADDRESS[c]}" "${VK_sscrt[c]}")"
-    assert_eq "$bal" 100
+    assert_eq "$bal" $(("$c_bal" - 105))
     # assert: ftoken contract still has the nft
     nft_owner="$(compute_query "$snip721" '{"owner_of":{"token_id":"0"}}' | jq -r '.owner_of.owner')"
     assert_eq "$nft_owner" "$ftoken0"
 
-    # ADDRESS[c] places a new bid for underlying nft
-    bid_amt=100
+    # `c` can bid again
+    bid_amt=150
     msg='{"bid":{"amount":"'"$bid_amt"'"}}'
-    handle_w "$ftoken0" "$msg" c
+    resp="$(handle_w "$ftoken0" "$msg" c)"
+    # `c` now has 1000-150 sscrt
+    bal="$(s20_balance "$sscrt" "${ADDRESS[c]}" "${VK_sscrt[c]}")"
+    assert_eq "$bal" $(("$c_bal" - "$bid_amt"))
+    # assert: ftoken contract still has the nft
+    nft_owner="$(compute_query "$snip721" '{"owner_of":{"token_id":"0"}}' | jq -r '.owner_of.owner')"
+    assert_eq "$nft_owner" "$ftoken0"
 
-    # `a` votes yes, `b` votes no => final result = yes
-    handle "$ftoken0" '{"vote":{"bid_id":1,"vote":"yes"}}' a
-    handle_w "$ftoken0" '{"vote":{"bid_id":1,"vote":"no"}}' b
+    # Wait for auction period to be over
+    # sleep 6
 
-    # finalize vote count. yes>no, so bid wins
-    msg='{"finalize_bid_vote_count":{"bid_id":1}}'
+    # finalize auction
+    msg='{"finalize_auction":{}}'
     handle_w "$ftoken0" "$msg" a
-
-    # bidder retrieves nft
-    msg='{"retrieve_nft":{"bid_id":1}}'
-    handle_w "$ftoken0" "$msg" c
-    # assert: `c` has the nft
+    # assert: `c` now has the nft
     nft_owner="$(compute_query "$snip721" '{"owner_of":{"token_id":"0"}}' | jq -r '.owner_of.owner')"
     assert_eq "$nft_owner" "${ADDRESS[c]}"
 
     # `a` and `b` unstake their tokens
-    # ftkn_a=$(("$supply" - "$transfer"))
-    # ftkn_b="$transfer"
-    msg='{"unstake":{"amount":"'"$ftkn_a"'"}}'
+    # stake_a=$(("$supply" - "$transfer"))
+    # stake_b="$transfer"
+    msg='{"unstake":{"amount":"'"$stake_a"'"}}'
     handle "$ftoken0" "$msg" a
-    msg='{"unstake":{"amount":"'"$ftkn_b"'"}}'
+    msg='{"unstake":{"amount":"'"$stake_b"'"}}'
     handle_w "$ftoken0" "$msg" b
     bal_a="$(s20_balance "$ftoken0" "${ADDRESS[a]}" "${VK_token[a]}")"
     bal_b="$(s20_balance "$ftoken0" "${ADDRESS[b]}" "${VK_token[b]}")"
-    assert_eq "$bal_a" "$ftkn_a"
-    assert_eq "$bal_b" "$ftkn_b"
+    assert_eq "$bal_a" "$stake_a"
+    assert_eq "$bal_b" "$stake_b"
     
     # ftoken holder claims proceeds
     # get `a` and `b` sscrt balances
@@ -687,9 +719,9 @@ function doUnfractionalize() {
     # `a` and `b` gets their claim proceeds
     a_bal_after="$(s20_balance "$sscrt" "${ADDRESS[a]}" "${VK_sscrt[a]}")"
     b_bal_after="$(s20_balance "$sscrt" "${ADDRESS[b]}" "${VK_sscrt[b]}")"
-    assert_eq $(("$a_bal_after" - "$a_bal")) $((("$supply"-"$transfer") * "$bid_amt" / "$supply"))
-    assert_eq $(("$b_bal_after" - "$b_bal")) $(("$transfer" * "$bid_amt" / "$supply"))
-
+    # minus 1 due to round-down precision errors
+    assert_eq $(("$a_bal_after" - "$a_bal")) $((("$supply"-"$transfer") * "$bid_amt" / "$supply" - 1))
+    assert_eq $(("$b_bal_after" - "$b_bal")) $(("$transfer" * "$bid_amt" / "$supply" - 1))
 }
 
 
@@ -716,7 +748,7 @@ function doQueries() {
     # compute_query $snip721 '{"with_permit":{"permit":'$(echo $permit_q)',"query":{"nft_dossier":{"token_id":"0"}}}}' 
     compute_query "$snip721" '{"with_permit":{"permit":'"$permit_q"',"query":{"nft_dossier":{"token_id":"0"}}}}' 
     
-    # ftoken (SNIP20) queries
+    # ftoken queries
     compute_query "$ftoken0" '{"token_info":{}}'
     compute_query "$ftoken0" '{"token_config":{}}'
     compute_query "$ftoken0" '{"contract_status":{}}'
@@ -724,6 +756,7 @@ function doQueries() {
     compute_query "$ftoken0" '{"minters":{}}'
     compute_query "$ftoken0" '{"balance":{"address":"'"${ADDRESS[a]}"'","key":"'"${VK_token[a]}"'"}}'
     
+    compute_query "$ftoken0" '{"ftoken_query":{"reservation_price":{}}}'
     compute_query "$ftoken0" '{"debug_query":{}}' | jq '.debug_q_answer'
     
     # sscrt queries

@@ -28,13 +28,6 @@ use super::{
 // Instantiation
 /////////////////////////////////////////////////////////////////////////////////
 
-// #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-// pub struct InitialBalance {
-//     pub address: HumanAddr,
-//     pub amount: Uint128,
-// }
-
-
 /// Init Callback response to send upon instantiation of ftoken contract
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
@@ -87,16 +80,24 @@ impl InitRes {
 // ftoken query messages
 /////////////////////////////////////////////////////////////////////////////////
 
+/// Public (ie: non authenticated) query messages that are specific to ftoken 
+/// functionality (as opposed to standard SNIP20 queries)
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FtokenQuery {
+    /// Information on the ftoken determined at the point of fractionalization
     FtokenInfo { },
+    /// ftoken configuration, including auction and DAO parameters. These configurations
+    /// can be changed through a DAO
     FtokenConfig { },
     AuctionConfig { },
     ProposalConfig { },
+    /// The minimum amount that a bidder needs to bid (to buy out the underlying NFT) in 
+    /// order for the bid to be valid.
     ReservationPrice { },
+    /// List of DAO proposals 
     ProposalList { },
-    // enabling this reduces the privacy of bidders. Blockchain analysis or side chain attacks
+    // Enabling this reduces the privacy of bidders. Blockchain analysis or side chain attacks
     // can easily reveal address of bidders
     BidList { 
         page: u32, 
@@ -104,6 +105,8 @@ pub enum FtokenQuery {
     },
 }
 
+/// Authenticated queries (ie: required viewing key or query permit) that are specific
+/// to ftoken functionality (as opposed to standard SNIP20 queries)
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FtokenAuthQuery {
@@ -151,7 +154,10 @@ pub enum FtokenQueryAnswer {
 // Messages between ftoken contract and underlying NFT
 /////////////////////////////////////////////////////////////////////////////////
 
-/// List of messages that is allowed to be sent to underlying NFT
+/// List of messages that is allowed to be sent to underlying NFT. ftoken holders
+/// can propose to send these messages to the underlying NFT, where other ftoken 
+/// holders vote on whether to accept the proposal. Once a proposal passes, a  
+/// transaction can be triggered to send the proposed message to the underlying NFT
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AllowedNftMsg {

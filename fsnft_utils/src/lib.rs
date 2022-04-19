@@ -106,49 +106,49 @@ impl HandleCallback for InterContrMsg {
 /// Sent as init in fractionalize tx, and stored in ftoken contract 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
 pub struct FtokenConf {
-    /// number of blocks that ftokens will be bonded after a vote (on reservation
+    /// Number of blocks that ftokens will be bonded after a vote (on reservation
     /// price or on proposals). Important to prevent vote spamming and manipulation 
     pub min_ftkn_bond_prd: u64,
-    /// proportion of ftoken ownership required before private metadata of underlying
+    /// Proportion of ftoken ownership required before private metadata of underlying
     /// NFT can be queried by ftoken owner. This needs to be done with authenticated
     /// query, either through viewing keys or viewing permit. Unit in basis points (ie:
     /// 1/10_000)
     pub priv_metadata_view_threshold: u32,
-    /// configurations for auctions
+    /// Configurations for auctions
     pub auc_conf: AucConf,
-    // configurations for proposals
+    /// Configurations for proposals
     pub prop_conf: PropConf,
 }
 
 /// ftoken config for bidding. Nested in a larger struct
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
 pub struct AucConf {
-    /// determines the token that bids are made in (eg: sSCRT)
+    /// Determines the token that bids are made in (eg: sSCRT)
     pub bid_token: ContractInfo,
-    /// number of blocks that a bid remains live before a finalize_vote_count tx can be called
+    /// Number of blocks that a bid remains live before a finalize_vote_count tx can be called
     pub auc_period: u64,
-    /// user needs to vote a reservation price within this boundary. Boundary is the percentage above and below
+    /// User needs to vote a reservation price within this boundary. Boundary is the percentage above and below
     /// current reservation price.
     /// Floor = `current reservation price` * 100 / `minmax_boundary`.
     /// Ceiling = `current reservation price` * `minmax_boundary` / 100.
     pub resv_boundary: u32,
-    /// min bid increment proportion in basis points ie: 1/10_000. So a setting of 10 means that if the current highest bid
+    /// Min bid increment proportion in basis points ie: 1/10_000. So a setting of 10 means that if the current highest bid
     /// is 100_000 tokens, the next bid needs to be at least 1/1000 higher, or 100_100 tokens  
     pub min_bid_inc: u32,
-    /// proportion of ftoken OF TOTAL SUPPLY before NFT gets unlocked. Unit in basis points (1/1000)
+    /// Proportion of ftoken OF TOTAL SUPPLY before NFT gets unlocked. Unit in basis points (1/1000)
     pub unlock_threshold: Uint128,
 }
 
 /// ftoken contract config for dao proposals. Nested in a larger struct
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
 pub struct PropConf {
-    /// minimum ftoken stake to make a proposal
+    /// Minimum ftoken stake to make a proposal
     pub min_stake: Uint128,
-    /// number of blocks that a proposal remains live before a finalization tx can be called
+    /// Number of blocks that a proposal remains live before a finalization tx can be called
     pub vote_period: u64,
-    /// proportion of ftoken-weighted votes OF TOTAL SUPPLY before quorum is reached. Unit in basis points (1/1000)
+    /// Proportion of ftoken-weighted votes OF TOTAL SUPPLY before quorum is reached. Unit in basis points (1/1000)
     pub vote_quorum: Uint128,
-    /// proportion of ftoken-weighted votes OF TOTAL SUPPLY that needs to vote `veto` for a veto to apply. Unit in basis points (1/1000)
+    /// Proportion of ftoken-weighted votes OF TOTAL SUPPLY that needs to vote `veto` for a veto to apply. Unit in basis points (1/1000)
     pub veto_threshold: Uint128,
 }
 
@@ -157,7 +157,7 @@ pub struct PropConf {
 pub struct FtokenInfo {
     /// ftoken contract instance information, created at initialization
     pub instance: FtokenInstance,
-    /// is underlying nft still in the vault (ie: fractionalized)
+    /// Is underlying nft still in the vault (ie: fractionalized)
     pub vault_active: bool,
 }
 
@@ -167,17 +167,17 @@ pub struct FtokenInfo {
 pub struct FtokenInstance {
     /// ftoken contract index from the fractionalizer contract's perspective 
     pub ftkn_idx: u32,
-    /// address which deposited the nft
+    /// Address which deposited the nft
     pub depositor: HumanAddr,
-    /// code hash and address of ftoken contract
+    /// Code hash and address of ftoken contract
     pub ftoken_contr: ContractInfo,
-    /// information on the underlying nft that was initially deposited
+    /// Information on the underlying nft that was initially deposited
     pub init_nft_info: UndrNftInfo,
-    /// name of ftoken
+    /// Name of ftoken
     pub name: String,
-    /// symbol of ftoken
+    /// Symbol of ftoken
     pub symbol: String,
-    /// decimal of ftoken
+    /// Decimal of ftoken
     pub decimals: u8,
 }
 
@@ -185,15 +185,18 @@ pub struct FtokenInstance {
 /// initial configuration of fractionalized tokens
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct FtokenInit {  //FtokenConf
-    /// name of the ftoken
+    /// Name of the ftoken
     pub name: String,
-    /// symbol of the ftoken
+    /// Symbol of the ftoken
     pub symbol: String,
-    /// supply in the lowest denomination
+    /// Supply in the lowest denomination
     pub supply: Uint128,
-    /// determines the lowest denomination
+    /// Determines the lowest denomination
     pub decimals: u8,
-    /// initial reservation price which determines the initial min and max reservation price vote
+    /// Label String of the ftoken contract which will be instantiated. Instantiation of the new ftoken
+    /// contract will fail if the label already exists on another contract on Secret Network 
+    pub contract_label: String, 
+    /// Initial reservation price which determines the initial min and max reservation price vote
     /// for the first user who votes on reservation price
     pub init_resv_price: Uint128,
     /// ftoken config which is stored in the ftoken contract
@@ -203,15 +206,15 @@ pub struct FtokenInit {  //FtokenConf
 /// Part of information sent from fractionalizer contract to ftoken contract on instantiation tx
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
 pub struct FtokenContrInit {
-    /// index of ftoken contract. Starts from 0 
+    /// Index of ftoken contract. Starts from 0 
     pub ftkn_idx: u32,
-    /// depositor of NFT into fractionalizer
+    /// Depositor of NFT into fractionalizer
     pub depositor: HumanAddr,
-    /// contract hash of fractionalizer
+    /// Contract hash of fractionalizer
     pub fract_hash: String,
-    /// underlying NFT info
+    /// Underlying NFT info
     pub nft_info: UndrNftInfo,
-    /// initial reservation price which determines the initial min and max reservation price vote
+    /// Initial reservation price which determines the initial min and max reservation price vote
     /// for the first user who votes on reservation price
     pub init_resv_price: Uint128,
     /// ftoken config which is stored in the ftoken contract
@@ -221,18 +224,18 @@ pub struct FtokenContrInit {
 /// code hash and address of a contract
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
 pub struct ContractInfo {
-    /// contract's code hash string
+    /// Contract's code hash string
     pub code_hash: String,
-    /// contract's address in HumanAddr
+    /// Contract's address in HumanAddr
     pub address: HumanAddr,
 }
 
 /// underlying NFT information
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema, Default)]
 pub struct UndrNftInfo {
-    /// token id of underlying nft
+    /// Token id of underlying nft
     pub token_id: String,
-    /// contract code hash and address of contract of underlying nft 
+    /// Contract code hash and address of contract of underlying nft 
     pub nft_contr: ContractInfo,
 }
 

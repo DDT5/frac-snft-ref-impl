@@ -3,36 +3,6 @@
   "title": "HandleMsg",
   "anyOf": [
     {
-      "description": "Function for users to call. When called, fsnft contract will register with SNIP721 contract",
-      "type": "object",
-      "required": [
-        "register"
-      ],
-      "properties": {
-        "register": {
-          "type": "object",
-          "required": [
-            "reg_addr",
-            "reg_hash"
-          ],
-          "properties": {
-            "reg_addr": {
-              "description": "The SNIP721 contract address to registered with",
-              "allOf": [
-                {
-                  "$ref": "#/definitions/HumanAddr"
-                }
-              ]
-            },
-            "reg_hash": {
-              "description": "The SNIP721 contract code hash",
-              "type": "string"
-            }
-          }
-        }
-      }
-    },
-    {
       "description": "Receiver interface function for SNIP721 contract. Msg to be received from SNIP721 contract BatchReceiveNft may be a HandleMsg variant of any contract that wants to implement a receiver interface.  BatchReceiveNft, which is more informative and more efficient, is preferred over ReceiveNft.",
       "type": "object",
       "required": [
@@ -118,108 +88,52 @@
       }
     },
     {
-      "description": "`send` an NFT that this contract has permission to transfer",
-      "type": "object",
-      "required": [
-        "send_nft"
-      ],
-      "properties": {
-        "send_nft": {
-          "type": "object",
-          "required": [
-            "contract",
-            "nft_contr_addr",
-            "nft_contr_hash",
-            "token_id"
-          ],
-          "properties": {
-            "contract": {
-              "description": "address to send the token to",
-              "allOf": [
-                {
-                  "$ref": "#/definitions/HumanAddr"
-                }
-              ]
-            },
-            "msg": {
-              "anyOf": [
-                {
-                  "$ref": "#/definitions/Binary"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "nft_contr_addr": {
-              "$ref": "#/definitions/HumanAddr"
-            },
-            "nft_contr_hash": {
-              "type": "string"
-            },
-            "token_id": {
-              "type": "string"
-            }
-          }
-        }
-      }
-    },
-    {
-      "description": "Instantiates ftoken contract",
-      "type": "object",
-      "required": [
-        "instantiate_ftoken"
-      ],
-      "properties": {
-        "instantiate_ftoken": {
-          "type": "object",
-          "required": [
-            "callback_code_hash",
-            "decimals",
-            "name",
-            "symbol"
-          ],
-          "properties": {
-            "callback_code_hash": {
-              "type": "string"
-            },
-            "decimals": {
-              "type": "integer",
-              "format": "uint8",
-              "minimum": 0.0
-            },
-            "name": {
-              "type": "string"
-            },
-            "symbol": {
-              "type": "string"
-            }
-          }
-        }
-      }
-    },
-    {
       "description": "Receiver for InitResponse callback from ftoken contract",
       "type": "object",
       "required": [
-        "register_ftoken"
+        "receive_ftoken_callback"
       ],
       "properties": {
-        "register_ftoken": {
+        "receive_ftoken_callback": {
           "type": "object",
           "required": [
-            "contract_info",
-            "ftoken_config"
+            "ftkn_instance"
           ],
           "properties": {
-            "contract_info": {
-              "$ref": "#/definitions/ContractInfo"
-            },
-            "ftoken_config": {
-              "description": "ftoken contract id",
+            "ftkn_instance": {
+              "$ref": "#/definitions/FtokenInstance"
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "User calls this function to fractionalize an NFT User must first give permission to fractionalizer to transfer the NFT",
+      "type": "object",
+      "required": [
+        "fractionalize"
+      ],
+      "properties": {
+        "fractionalize": {
+          "type": "object",
+          "required": [
+            "ftkn_init",
+            "nft_info"
+          ],
+          "properties": {
+            "ftkn_init": {
+              "description": "configuration of fractionalized token",
               "allOf": [
                 {
-                  "$ref": "#/definitions/FtokenConfig"
+                  "$ref": "#/definitions/FtokenInit"
+                }
+              ]
+            },
+            "nft_info": {
+              "description": "Underlying NFT information token id and SNIP721 contract address and hash",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/UndrNftInfo"
                 }
               ]
             }
@@ -229,6 +143,53 @@
     }
   ],
   "definitions": {
+    "AucConf": {
+      "description": "ftoken config for bidding. Nested in a larger struct",
+      "type": "object",
+      "required": [
+        "auc_period",
+        "bid_token",
+        "min_bid_inc",
+        "resv_boundary",
+        "unlock_threshold"
+      ],
+      "properties": {
+        "auc_period": {
+          "description": "Number of blocks that a bid remains live before a finalize_vote_count tx can be called",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "bid_token": {
+          "description": "Determines the token that bids are made in (eg: sSCRT)",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ContractInfo"
+            }
+          ]
+        },
+        "min_bid_inc": {
+          "description": "Min bid increment proportion in basis points ie: 1/10_000. So a setting of 10 means that if the current highest bid is 100_000 tokens, the next bid needs to be at least 1/1000 higher, or 100_100 tokens",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "resv_boundary": {
+          "description": "User needs to vote a reservation price within this boundary. Boundary is the percentage above and below current reservation price. Floor = `current reservation price` * 100 / `minmax_boundary`. Ceiling = `current reservation price` * `minmax_boundary` / 100.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlock_threshold": {
+          "description": "Proportion of ftoken OF TOTAL SUPPLY before NFT gets unlocked. Unit in basis points (1/1000)",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        }
+      }
+    },
     "Binary": {
       "description": "Binary is a wrapper around Vec<u8> to add base64 de/serialization with serde. It also adds some helper methods to help encode inline.\n\nThis is only needed as serde-json-{core,wasm} has a horrible encoding for Vec<u8>",
       "type": "string"
@@ -242,7 +203,7 @@
       ],
       "properties": {
         "address": {
-          "description": "contract's address in HumanAddr",
+          "description": "Contract's address in HumanAddr",
           "allOf": [
             {
               "$ref": "#/definitions/HumanAddr"
@@ -250,41 +211,236 @@
           ]
         },
         "code_hash": {
-          "description": "contract's code hash string",
+          "description": "Contract's code hash string",
           "type": "string"
         }
       }
     },
-    "FtokenConfig": {
-      "description": "config of the ftoken contract",
+    "FtokenConf": {
+      "description": "ftoken overall config which is stored in the ftoken contract. Sent as init in fractionalize tx, and stored in ftoken contract",
+      "type": "object",
+      "required": [
+        "auc_conf",
+        "min_ftkn_bond_prd",
+        "priv_metadata_view_threshold",
+        "prop_conf"
+      ],
+      "properties": {
+        "auc_conf": {
+          "description": "Configurations for auctions",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AucConf"
+            }
+          ]
+        },
+        "min_ftkn_bond_prd": {
+          "description": "Number of blocks that ftokens will be bonded after a vote (on reservation price or on proposals). Important to prevent vote spamming and manipulation",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "priv_metadata_view_threshold": {
+          "description": "Proportion of ftoken ownership required before private metadata of underlying NFT can be queried by ftoken owner. This needs to be done with authenticated query, either through viewing keys or viewing permit. Unit in basis points (ie: 1/10_000)",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "prop_conf": {
+          "description": "Configurations for proposals",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PropConf"
+            }
+          ]
+        }
+      }
+    },
+    "FtokenInit": {
+      "description": "Part of initialization message sent by USERS to fractionalizer initial configuration of fractionalized tokens",
+      "type": "object",
+      "required": [
+        "contract_label",
+        "decimals",
+        "ftkn_conf",
+        "init_resv_price",
+        "name",
+        "supply",
+        "symbol"
+      ],
+      "properties": {
+        "contract_label": {
+          "description": "Label String of the ftoken contract which will be instantiated. Instantiation of the new ftoken contract will fail if the label already exists on another contract on Secret Network",
+          "type": "string"
+        },
+        "decimals": {
+          "description": "Determines the lowest denomination",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "ftkn_conf": {
+          "description": "ftoken config which is stored in the ftoken contract",
+          "allOf": [
+            {
+              "$ref": "#/definitions/FtokenConf"
+            }
+          ]
+        },
+        "init_resv_price": {
+          "description": "Initial reservation price which determines the initial min and max reservation price vote for the first user who votes on reservation price",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        },
+        "name": {
+          "description": "Name of the ftoken",
+          "type": "string"
+        },
+        "supply": {
+          "description": "Supply in the lowest denomination",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        },
+        "symbol": {
+          "description": "Symbol of the ftoken",
+          "type": "string"
+        }
+      }
+    },
+    "FtokenInstance": {
+      "description": "ftoken contract information created at initialization, stored directly in fractionalizer contract, also within the FtokenInfo struct stored in ftoken contracts",
       "type": "object",
       "required": [
         "decimals",
-        "index",
+        "depositor",
+        "ftkn_idx",
+        "ftoken_contr",
+        "init_nft_info",
         "name",
         "symbol"
       ],
       "properties": {
         "decimals": {
+          "description": "Decimal of ftoken",
           "type": "integer",
           "format": "uint8",
           "minimum": 0.0
         },
-        "index": {
+        "depositor": {
+          "description": "Address which deposited the nft",
+          "allOf": [
+            {
+              "$ref": "#/definitions/HumanAddr"
+            }
+          ]
+        },
+        "ftkn_idx": {
+          "description": "ftoken contract index from the fractionalizer contract's perspective",
           "type": "integer",
           "format": "uint32",
           "minimum": 0.0
         },
+        "ftoken_contr": {
+          "description": "Code hash and address of ftoken contract",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ContractInfo"
+            }
+          ]
+        },
+        "init_nft_info": {
+          "description": "Information on the underlying nft that was initially deposited",
+          "allOf": [
+            {
+              "$ref": "#/definitions/UndrNftInfo"
+            }
+          ]
+        },
         "name": {
+          "description": "Name of ftoken",
           "type": "string"
         },
         "symbol": {
+          "description": "Symbol of ftoken",
           "type": "string"
         }
       }
     },
     "HumanAddr": {
       "type": "string"
+    },
+    "PropConf": {
+      "description": "ftoken contract config for dao proposals. Nested in a larger struct",
+      "type": "object",
+      "required": [
+        "min_stake",
+        "veto_threshold",
+        "vote_period",
+        "vote_quorum"
+      ],
+      "properties": {
+        "min_stake": {
+          "description": "Minimum ftoken stake to make a proposal",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        },
+        "veto_threshold": {
+          "description": "Proportion of ftoken-weighted votes OF TOTAL SUPPLY that needs to vote `veto` for a veto to apply. Unit in basis points (1/1000)",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        },
+        "vote_period": {
+          "description": "Number of blocks that a proposal remains live before a finalization tx can be called",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "vote_quorum": {
+          "description": "Proportion of ftoken-weighted votes OF TOTAL SUPPLY before quorum is reached. Unit in basis points (1/1000)",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Uint128"
+            }
+          ]
+        }
+      }
+    },
+    "Uint128": {
+      "type": "string"
+    },
+    "UndrNftInfo": {
+      "description": "underlying NFT information",
+      "type": "object",
+      "required": [
+        "nft_contr",
+        "token_id"
+      ],
+      "properties": {
+        "nft_contr": {
+          "description": "Contract code hash and address of contract of underlying nft",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ContractInfo"
+            }
+          ]
+        },
+        "token_id": {
+          "description": "Token id of underlying nft",
+          "type": "string"
+        }
+      }
     }
   }
 }
