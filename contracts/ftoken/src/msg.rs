@@ -22,7 +22,8 @@ use crate::ftoken_mod::{
     state::{Vote},
 };
 
-use crate::ftoken_mod::ft_permit::Permit;
+// use crate::ftoken_mod::ft_permit::Permit;
+use crate::ftoken_mod::msg::Snip1155Permit;
 
 // ///////////////////////////
 
@@ -490,7 +491,7 @@ pub enum QueryMsg {
     },
     Minters {},
     WithPermit {
-        permit: Permit,
+        permit: Snip1155Permit,
         query: QueryWithPermit,
     },
     // ftoken additions:

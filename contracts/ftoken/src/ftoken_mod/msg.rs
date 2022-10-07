@@ -12,8 +12,8 @@ use fsnft_utils::{
 use secret_toolkit::{
     // serialization::{Json, Serde}, 
     utils::{HandleCallback, Query}, 
-    snip721::{ViewerInfo, AccessLevel, Metadata, Expiration, NftDossier, 
-    },
+    snip721::{ViewerInfo, AccessLevel, Metadata, Expiration, NftDossier,},
+    permit::Permit,
 }; 
 use crate::{
     contract::{RESPONSE_BLOCK_SIZE}, 
@@ -149,6 +149,44 @@ pub enum FtokenQueryAnswer {
     ProposalVotes(VoteRegister),
     Bid(BidInfo),
 }
+
+
+/////////////////////////////////////////////////////////////////////////////////
+// SNIP1155 permit
+/////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Snip1155Permissions {
+    /// Allowance for SNIP-20 - Permission to query allowance of the owner & spender
+    Allowance,
+    /// Balance for SNIP-20 - Permission to query balance
+    Balance,
+    /// History for SNIP-20 - Permission to query transfer_history & transaction_hisotry
+    History,
+    /// Owner permission indicates that the bearer of this permit should be granted all
+    /// the access of the creator/signer of the permit.  SNIP-721 uses this to grant
+    /// viewing access to all data that the permit creator owns and is whitelisted for.
+    /// For SNIP-721 use, a permit with Owner permission should NEVER be given to
+    /// anyone else.  If someone wants to share private data, they should whitelist
+    /// the address they want to share with via a SetWhitelistedApproval tx, and that
+    /// address will view the data by creating their own permit with Owner permission
+    Owner,
+    /// For ftokens: PrivateMetadata of underlying NFT
+    NftPrivateMetadata,
+    /// For ftokens: NftDossier of underlying NFT
+    NftDossier,
+    /// For ftokens: Staked ftokens associated with the address
+    StakedTokens,
+    /// For ftokens: Reservation price vote by the address
+    ReservationPriceVote,
+    /// For ftokens: Votes on proposals by the address
+    ProposalVotes,
+    /// For ftokens: Bids made by the address
+    Bid,
+}
+
+pub type Snip1155Permit = Permit<Snip1155Permissions>;
 
 /////////////////////////////////////////////////////////////////////////////////
 // Messages between ftoken contract and underlying NFT

@@ -23,8 +23,9 @@ use crate::transaction_history::{
     get_transfers, get_txs, store_burn, store_deposit, store_mint, store_redeem, store_transfer,
 };
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
-// ftoken removals
+// ftoken edits
 // use secret_toolkit::permit::{validate, Permission, Permit, RevokedPermits};
+use secret_toolkit::permit::{validate, RevokedPermits};
 
 // ftoken additions:
 use crate::{
@@ -38,7 +39,8 @@ use crate::{
         queries::{ftoken_queries, ftoken_permit_queries}, //debug_query
     }
 };
-use crate::ftoken_mod::ft_permit::{validate, Permission, Permit, RevokedPermits};
+// use crate::ftoken_mod::ft_permit::{validate, Permission, Permit, RevokedPermits};
+use crate::ftoken_mod::msg::{Snip1155Permit, Snip1155Permissions};
 
 // ftoken additions: changed the bytes so does not conflict with SNIP20-standard-implementation.
 // This is so multi-contract unit tests can work without the storage keys colliding. 
@@ -403,10 +405,12 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
     }
 }
 
-
+// ftoken edits: 
+// Permit -> SNIP1155Permit
+// Permission -> SNIP1155Permissions
 fn permit_queries<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
-    permit: Permit,
+    permit: Snip1155Permit,
     query: QueryWithPermit,
 ) -> Result<Binary, StdError> {
     // Validate permit content
@@ -414,12 +418,14 @@ fn permit_queries<S: Storage, A: Api, Q: Querier>(
         .constants()?
         .contract_address;
 
-    let account = validate(deps, PREFIX_REVOKED_PERMITS, &permit, token_address)?;
+    let account = HumanAddr(
+        validate(deps, PREFIX_REVOKED_PERMITS, &permit, token_address, None)?
+    );
 
     // Permit validated! We can now execute the query.
     match query {
         QueryWithPermit::Balance {} => {
-            if !permit.check_permission(&Permission::Balance) {
+            if !permit.check_permission(&Snip1155Permissions::Balance) {
                 return Err(StdError::generic_err(format!(
                     "No permission to query balance, got permissions {:?}",
                     permit.params.permissions
@@ -429,7 +435,7 @@ fn permit_queries<S: Storage, A: Api, Q: Querier>(
             query_balance(deps, &account)
         }
         QueryWithPermit::TransferHistory { page, page_size } => {
-            if !permit.check_permission(&Permission::History) {
+            if !permit.check_permission(&Snip1155Permissions::History) {
                 return Err(StdError::generic_err(format!(
                     "No permission to query history, got permissions {:?}",
                     permit.params.permissions
@@ -439,7 +445,7 @@ fn permit_queries<S: Storage, A: Api, Q: Querier>(
             query_transfers(deps, &account, page.unwrap_or(0), page_size)
         }
         QueryWithPermit::TransactionHistory { page, page_size } => {
-            if !permit.check_permission(&Permission::History) {
+            if !permit.check_permission(&Snip1155Permissions::History) {
                 return Err(StdError::generic_err(format!(
                     "No permission to query history, got permissions {:?}",
                     permit.params.permissions
@@ -449,7 +455,7 @@ fn permit_queries<S: Storage, A: Api, Q: Querier>(
             query_transactions(deps, &account, page.unwrap_or(0), page_size)
         }
         QueryWithPermit::Allowance { owner, spender } => {
-            if !permit.check_permission(&Permission::Allowance) {
+            if !permit.check_permission(&Snip1155Permissions::Allowance) {
                 return Err(StdError::generic_err(format!(
                     "No permission to query allowance, got permissions {:?}",
                     permit.params.permissions

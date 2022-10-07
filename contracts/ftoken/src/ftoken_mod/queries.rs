@@ -4,7 +4,7 @@ use cosmwasm_std::{
 };
 use secret_toolkit::{
     snip721::ViewerInfo, 
-    utils::Query
+    utils::Query,
 };
 
 use crate::{
@@ -20,9 +20,11 @@ use super::{
         PropInfoTally, votes_r, may_get_bid_from_addr,
     }, 
     msg::{FtokenQuery, FtokenAuthQuery, FtokenQueryAnswer, S721QueryMsg, 
-        PrivateMetadataResponse, NftDossierResponse}, 
-    ft_permit::{Permit, Permission}
+        PrivateMetadataResponse, NftDossierResponse, 
+        Snip1155Permit, Snip1155Permissions}, 
+    // ft_permit::{Permit, Permission}
 };
+
 
 /////////////////////////////////////////////////////////////////////////////////
 // Match arms for queries
@@ -48,13 +50,13 @@ pub fn ftoken_queries<S: Storage, A: Api, Q: Querier>(
 
 pub fn ftoken_permit_queries<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>, 
-    permit: Permit,
+    permit: Snip1155Permit,
     account: &HumanAddr, 
     query: FtokenAuthQuery,
 ) -> QueryResult {
     match query {
         FtokenAuthQuery::NftPrivateMetadata {  } => {
-            if !permit.check_permission(&Permission::NftPrivateMetadata) {
+            if !permit.check_permission(&Snip1155Permissions::NftPrivateMetadata) {
                 return Err(StdError::generic_err(format!(
                     "No permission to query underlying NFT private metadata, got permissions {:?}",
                     permit.params.permissions
@@ -64,7 +66,7 @@ pub fn ftoken_permit_queries<S: Storage, A: Api, Q: Querier>(
             query_nft_priv_metadata(&deps, account)
         },
         FtokenAuthQuery::NftDossier {  } => {
-            if !permit.check_permission(&Permission::NftDossier) {
+            if !permit.check_permission(&Snip1155Permissions::NftDossier) {
                 return Err(StdError::generic_err(format!(
                     "No permission to query underlying NFT Dossier, got permissions {:?}",
                     permit.params.permissions
@@ -74,7 +76,7 @@ pub fn ftoken_permit_queries<S: Storage, A: Api, Q: Querier>(
             query_nft_dossier(&deps, account)
         },
         FtokenAuthQuery::StakedTokens {  } => {
-            if !permit.check_permission(&Permission::StakedTokens) {
+            if !permit.check_permission(&Snip1155Permissions::StakedTokens) {
                 return Err(StdError::generic_err(format!(
                     "No permission to query staked tokens, got permissions {:?}",
                     permit.params.permissions
@@ -84,7 +86,7 @@ pub fn ftoken_permit_queries<S: Storage, A: Api, Q: Querier>(
             query_staked_tokens(&deps.storage, account)
         },
         FtokenAuthQuery::ReservationPriceVote {  } => {
-            if !permit.check_permission(&Permission::ReservationPriceVote) {
+            if !permit.check_permission(&Snip1155Permissions::ReservationPriceVote) {
                 return Err(StdError::generic_err(format!(
                     "No permission to query reservation price votes, got permissions {:?}",
                     permit.params.permissions
@@ -94,7 +96,7 @@ pub fn ftoken_permit_queries<S: Storage, A: Api, Q: Querier>(
             query_reservation_price_vote(&deps.storage, account)
         },
         FtokenAuthQuery::ProposalVotes { prop_id } => {
-            if !permit.check_permission(&Permission::ProposalVotes) {
+            if !permit.check_permission(&Snip1155Permissions::ProposalVotes) {
                 return Err(StdError::generic_err(format!(
                     "No permission to query proposal votes, got permissions {:?}",
                     permit.params.permissions
@@ -104,7 +106,7 @@ pub fn ftoken_permit_queries<S: Storage, A: Api, Q: Querier>(
             query_proposal_votes(&deps.storage, account, prop_id)
         },
         FtokenAuthQuery::Bid {  } => {
-            if !permit.check_permission(&Permission::ProposalVotes) {
+            if !permit.check_permission(&Snip1155Permissions::ProposalVotes) {
                 return Err(StdError::generic_err(format!(
                     "No permission to query proposal votes, got permissions {:?}",
                     permit.params.permissions
