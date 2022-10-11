@@ -23,3 +23,5 @@ contract.wasm.gz
 
 # Additional
 /local
+/int_tests/tests/node_modules
+/int_tests/tests/package-lock.json
